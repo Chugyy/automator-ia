@@ -45,6 +45,54 @@ class BaseOAuthTool(BaseTool):
                 host = 'localhost'
             base_url = f"http://{host}:{port}"
         return f"{base_url}/oauth/{self.tool_name.lower()}/callback"
+
+    # --- Path resolution helpers ---
+    def _get_backend_dir(self) -> str:
+        tool_dir = os.path.dirname(os.path.abspath(__file__))
+        # backend/app/private/tools -> backend (three levels up)
+        return os.path.abspath(os.path.join(tool_dir, '..', '..', '..'))
+
+    def _get_repo_root(self) -> str:
+        return os.path.abspath(os.path.join(self._get_backend_dir(), '..'))
+
+    def _resolve_path(self, rel_or_abs: str) -> Optional[str]:
+        """Return an existing absolute path for a given relative/absolute path, if found."""
+        if not rel_or_abs:
+            return None
+        # Absolute path
+        if os.path.isabs(rel_or_abs):
+            return rel_or_abs if os.path.exists(rel_or_abs) else None
+        candidates = [
+            os.path.abspath(os.path.join(self.base_dir, rel_or_abs)),
+            os.path.abspath(os.path.join(self._get_backend_dir(), rel_or_abs)),
+            os.path.abspath(os.path.join(self._get_repo_root(), rel_or_abs)),
+        ]
+        for c in candidates:
+            if os.path.exists(c):
+                return c
+        return None
+
+    def _resolve_write_path(self, rel_or_abs: str) -> str:
+        """Choose a write path for tokens based on existing dirs or create them."""
+        if os.path.isabs(rel_or_abs):
+            target = rel_or_abs
+        else:
+            # prefer repo root location if directory exists, else backend dir, else base dir
+            backend_target = os.path.abspath(os.path.join(self._get_backend_dir(), rel_or_abs))
+            repo_target = os.path.abspath(os.path.join(self._get_repo_root(), rel_or_abs))
+            base_target = os.path.abspath(os.path.join(self.base_dir, rel_or_abs))
+            for t in (backend_target, repo_target, base_target):
+                parent = os.path.dirname(t)
+                try:
+                    os.makedirs(parent, exist_ok=True)
+                    target = t
+                    break
+                except Exception:
+                    continue
+            else:
+                # Fallback to base_target without creating
+                target = base_target
+        return target
     
     def get_auth_url(self) -> str:
         """Generate OAuth authorization URL"""
@@ -55,9 +103,13 @@ class BaseOAuthTool(BaseTool):
     
     def _get_google_auth_url(self) -> str:
         """Generate Google OAuth authorization URL"""
-        credentials_path = os.path.join(self.base_dir, self.config['credentials_file'])
-        if not os.path.exists(credentials_path):
-            raise FileNotFoundError(f"Credentials file not found: {credentials_path}")
+        configured = self.config.get('credentials_file')
+        credentials_path = self._resolve_path(configured)
+        if not credentials_path:
+            raise FileNotFoundError(
+                f"Credentials file not found for '{configured}'. "
+                f"Tried under base_dir, repo root and backend dirs."
+            )
         
         flow = Flow.from_client_secrets_file(
             credentials_path,
@@ -100,10 +152,11 @@ class BaseOAuthTool(BaseTool):
     def _handle_google_callback(self, authorization_response: str, state: str) -> bool:
         """Handle Google OAuth callback"""
         try:
-            credentials_path = os.path.join(self.base_dir, self.config['credentials_file'])
+            configured = self.config.get('credentials_file')
+            credentials_path = self._resolve_path(configured)
             logger.info(f"Using credentials file: {credentials_path}")
             
-            if not os.path.exists(credentials_path):
+            if not credentials_path or not os.path.exists(credentials_path):
                 raise FileNotFoundError(f"Credentials file not found: {credentials_path}")
             
             flow = Flow.from_client_secrets_file(
@@ -215,7 +268,8 @@ class BaseOAuthTool(BaseTool):
                 scopes = [full_scope]
         
         creds = None
-        token_path = os.path.join(self.base_dir, self.config['token_file'])
+        token_config = self.config.get('token_file')
+        token_path = self._resolve_path(token_config) or os.path.abspath(os.path.join(self.base_dir, token_config))
         
         # Load existing token
         if os.path.exists(token_path):
@@ -248,7 +302,7 @@ class BaseOAuthTool(BaseTool):
     
     def _save_credentials(self, credentials: Credentials) -> None:
         """Save OAuth credentials to file"""
-        token_path = os.path.join(self.base_dir, self.config['token_file'])
+        token_path = self._resolve_write_path(self.config.get('token_file'))
         
         # Create token directory if needed
         token_dir = os.path.dirname(token_path)

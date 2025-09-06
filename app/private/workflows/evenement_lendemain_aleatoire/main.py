@@ -1,9 +1,13 @@
 from typing import Dict, Any, List, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import random
 import re
 import webbrowser
 import time
+try:
+    from zoneinfo import ZoneInfo
+except Exception:
+    ZoneInfo = None
 
 try:
     # Tools injected by the engine/registry
@@ -35,7 +39,7 @@ def _with_random_suffix(summary: str) -> str:
     return f"{base} - {digits}"
 
 
-def _parse_event_dt(dt_obj: Dict[str, Any]) -> datetime:
+def _parse_event_dt(dt_obj: Dict[str, Any], fallback_tz) -> datetime:
     # Handles both dateTime and date (all day)
     if not dt_obj:
         return None
@@ -43,16 +47,27 @@ def _parse_event_dt(dt_obj: Dict[str, Any]) -> datetime:
         # Normalize Z to +00:00 for fromisoformat
         dt_str = dt_obj['dateTime'].replace('Z', '+00:00')
         try:
-            return datetime.fromisoformat(dt_str)
+            dt = datetime.fromisoformat(dt_str)
+            return dt
         except Exception:
             # Fallback: strip timezone if parsing fails
-            return datetime.fromisoformat(dt_str.split('+')[0])
+            dt = datetime.fromisoformat(dt_str.split('+')[0])
+            # attach fallback tz if provided
+            if fallback_tz is not None:
+                dt = dt.replace(tzinfo=fallback_tz)
+            return dt
     if 'date' in dt_obj and dt_obj['date']:
         try:
-            return datetime.fromisoformat(dt_obj['date'])
+            dt = datetime.fromisoformat(dt_obj['date'])
+            if fallback_tz is not None:
+                dt = dt.replace(tzinfo=fallback_tz)
+            return dt
         except Exception:
             # yyyy-mm-dd
-            return datetime.strptime(dt_obj['date'], '%Y-%m-%d')
+            dt = datetime.strptime(dt_obj['date'], '%Y-%m-%d')
+            if fallback_tz is not None:
+                dt = dt.replace(tzinfo=fallback_tz)
+            return dt
     return None
 
 
@@ -79,12 +94,12 @@ def _find_conflicts_same_name(
             continue
         if _base_name(s) != base:
             continue
-        es = _parse_event_dt(e.get('start', {}))
-        ee = _parse_event_dt(e.get('end', {}))
+        es = _parse_event_dt(e.get('start', {}), target_start.tzinfo)
+        ee = _parse_event_dt(e.get('end', {}), target_start.tzinfo)
         if not es or not ee:
             continue
         # Keep only same-day events
-        if not _same_day(es, day_ref):
+        if not _same_day(es.astimezone(target_start.tzinfo) if es.tzinfo else es, day_ref):
             continue
         if _overlaps(target_start, target_end, es, ee):
             conflicts.append((es, ee))
@@ -114,6 +129,21 @@ def execute(data: Dict[str, Any] = None, tools: Dict[str, Any] = None) -> Dict[s
     # Tools
     date_tool = tools.get('date') if tools else DateTool()
     calendar_tool = tools.get('calendar') if tools else CalendarTool()
+
+    # Resolve timezone from calendar tool config
+    tz_name = None
+    try:
+        tz_name = (calendar_tool.config or {}).get('timezone') or 'Europe/Paris'
+    except Exception:
+        tz_name = 'Europe/Paris'
+    tzinfo = None
+    if ZoneInfo is not None and tz_name:
+        try:
+            tzinfo = ZoneInfo(tz_name)
+        except Exception:
+            tzinfo = timezone.utc
+    else:
+        tzinfo = timezone.utc
 
     def open_oauth_and_wait(timeout_sec: int = 45, poll_interval: float = 1.5) -> str:
         """Open OAuth page and wait up to timeout for completion. Returns the auth_url used."""
@@ -164,7 +194,7 @@ def execute(data: Dict[str, Any] = None, tools: Dict[str, Any] = None) -> Dict[s
         hour_start, hour_end = hour_end, hour_start
     rand_hour = random.randint(hour_start, hour_end)
 
-    start_dt = datetime.strptime(f"{target_date_str} {rand_hour:02d}:00:00", '%Y-%m-%d %H:%M:%S')
+    start_dt = datetime.strptime(f"{target_date_str} {rand_hour:02d}:00:00", '%Y-%m-%d %H:%M:%S').replace(tzinfo=tzinfo)
     end_dt = start_dt + timedelta(minutes=duration_minutes)
 
     # Fetch upcoming events and filter for same day

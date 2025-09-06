@@ -44,21 +44,16 @@ def get_dashboard_stats():
 
 @router.get("/api/env")
 def get_env_variables():
-    """API pour récupérer les variables d'environnement depuis .env.built"""
-    env_built_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "config", "built", ".env.built")
-    
-    if not os.path.exists(env_built_path):
-        raise HTTPException(status_code=404, detail=".env.built not found")
-    
+    """API pour récupérer les variables d'environnement depuis config/.env"""
+    env_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "config", ".env")
+    if not os.path.exists(env_path):
+        raise HTTPException(status_code=404, detail="config/.env not found")
     try:
         from dotenv import dotenv_values
-        env_vars = dotenv_values(env_built_path)
-        return {
-            "variables": env_vars,
-            "count": len(env_vars)
-        }
+        env_vars = dotenv_values(env_path)
+        return {"variables": env_vars, "count": len(env_vars), "path": env_path}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error reading .env.built: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error reading config/.env: {str(e)}")
 
 @router.post("/api/workflows/{workflow_name}/toggle")
 def toggle_workflow(workflow_name: str):
