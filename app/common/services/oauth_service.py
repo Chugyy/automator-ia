@@ -72,10 +72,12 @@ class OAuthService:
         """Register OAuth routes for a specific tool"""
         
         @router.get(f"/{tool_name}/auth")
-        async def auth_endpoint():
+        async def auth_endpoint(request: Request):
             """Initiate OAuth authentication"""
             try:
-                tool_instance = cls._get_tool_instance(tool_name, tool_info)
+                # Optional profile selection via query param
+                requested_profile = request.query_params.get('profile')
+                tool_instance = cls._get_tool_instance(tool_name, tool_info, requested_profile)
                 auth_url = tool_instance.get_auth_url()
                 return RedirectResponse(url=auth_url)
             except Exception as e:
@@ -86,7 +88,8 @@ class OAuthService:
         async def callback_endpoint(request: Request):
             """Handle OAuth callback"""
             try:
-                tool_instance = cls._get_tool_instance(tool_name, tool_info)
+                requested_profile = request.query_params.get('profile')
+                tool_instance = cls._get_tool_instance(tool_name, tool_info, requested_profile)
                 
                 # Get state from query parameters
                 state = request.query_params.get('state')
@@ -108,20 +111,22 @@ class OAuthService:
                 raise HTTPException(status_code=500, detail=f"Callback processing failed: {str(e)}")
         
         @router.get(f"/{tool_name}/status")
-        async def status_endpoint():
+        async def status_endpoint(request: Request):
             """Get OAuth authentication status"""
             try:
-                tool_instance = cls._get_tool_instance(tool_name, tool_info)
+                requested_profile = request.query_params.get('profile')
+                tool_instance = cls._get_tool_instance(tool_name, tool_info, requested_profile)
                 return tool_instance.get_oauth_status()
             except Exception as e:
                 logger.error(f"OAuth status error for {tool_name}: {e}")
                 raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
         
         @router.post(f"/{tool_name}/revoke")
-        async def revoke_endpoint():
+        async def revoke_endpoint(request: Request):
             """Revoke OAuth authentication"""
             try:
-                tool_instance = cls._get_tool_instance(tool_name, tool_info)
+                requested_profile = request.query_params.get('profile')
+                tool_instance = cls._get_tool_instance(tool_name, tool_info, requested_profile)
                 # Remove token file
                 token_path = os.path.join(tool_instance.base_dir, tool_instance.config['token_file'])
                 if os.path.exists(token_path):
@@ -141,16 +146,32 @@ class OAuthService:
                 raise HTTPException(status_code=500, detail=f"Revoke failed: {str(e)}")
     
     @classmethod
-    def _get_tool_instance(cls, tool_name: str, tool_info: Dict[str, Any]):
-        """Get tool instance for OAuth operations"""
+    def _get_tool_instance(cls, tool_name: str, tool_info: Dict[str, Any], requested_profile: str = None):
+        """Get tool instance for OAuth operations, picking the proper profile"""
         try:
             # Dynamic import of the tool class
             module_path = f"app.private.tools.{tool_name}.main"
             module = __import__(module_path, fromlist=[tool_info['class_name']])
             tool_class = getattr(module, tool_info['class_name'])
             
-            # Create instance with default profile
-            return tool_class(profile="DEFAULT")
+            # Determine best profile
+            profile = requested_profile
+            if not profile:
+                # Try discover profiles via ToolsService
+                try:
+                    from app.common.services.tool import ToolsService
+                    profiles = ToolsService.get_tool_profiles(tool_name)
+                    profile_names = [p.get('name') for p in profiles if p.get('name')]
+                    if 'DEFAULT' in profile_names:
+                        profile = 'DEFAULT'
+                    elif 'TEST' in profile_names:
+                        profile = 'TEST'
+                    elif profile_names:
+                        profile = profile_names[0]
+                except Exception:
+                    profile = 'DEFAULT'
+            
+            return tool_class(profile=profile or 'DEFAULT')
             
         except ImportError as e:
             raise ImportError(f"Could not import {tool_name} tool: {e}")

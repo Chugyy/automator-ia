@@ -35,7 +35,15 @@ class BaseOAuthTool(BaseTool):
     
     def _get_redirect_uri(self) -> str:
         """Generate redirect URI for this tool"""
-        base_url = self.config.get('oauth_url') or f"http://{settings.host}:{settings.port}"
+        # Prefer explicit config; otherwise build from settings, using localhost if bound to 0.0.0.0
+        if self.config.get('oauth_url'):
+            base_url = self.config['oauth_url']
+        else:
+            host = settings.host
+            port = settings.port
+            if not host or host in ('0.0.0.0', '::'):
+                host = 'localhost'
+            base_url = f"http://{host}:{port}"
         return f"{base_url}/oauth/{self.tool_name.lower()}/callback"
     
     def get_auth_url(self) -> str:
@@ -126,8 +134,18 @@ class BaseOAuthTool(BaseTool):
         """Store OAuth state for validation"""
         state_file = os.path.join(self.base_dir, f".oauth_state_{self.tool_name.lower()}")
         try:
+            data = {}
+            if os.path.exists(state_file):
+                try:
+                    with open(state_file, 'r') as f:
+                        data = json.load(f) or {}
+                except Exception:
+                    data = {}
+            entries = data.get('entries', [])
+            entries.append({'state': state, 'timestamp': time.time(), 'profile': self.profile})
+            data['entries'] = entries[-20:]
             with open(state_file, 'w') as f:
-                json.dump({'state': state, 'timestamp': time.time()}, f)
+                json.dump(data, f)
         except Exception as e:
             logger.warning(f"Could not store OAuth state: {e}")
     
@@ -147,29 +165,32 @@ class BaseOAuthTool(BaseTool):
                 
             with open(state_file, 'r') as f:
                 stored_data = json.load(f)
-            
-            stored_state = stored_data.get('state')
-            timestamp = stored_data.get('timestamp', 0)
-            
-            logger.debug(f"Stored state: {stored_state}")
-            logger.debug(f"Provided state: {state}")
-            logger.debug(f"State age: {time.time() - timestamp} seconds")
-            
-            # State expires after 10 minutes
-            if time.time() - timestamp > 600:
-                logger.warning("OAuth state expired")
-                os.remove(state_file)
-                return False
-            
-            # Check state match
-            is_valid = stored_state == state
-            logger.debug(f"State validation result: {is_valid}")
-            
-            # Clean up state file after use only if valid
-            if is_valid:
-                os.remove(state_file)
-            
-            return is_valid
+            entries = stored_data.get('entries')
+            if isinstance(entries, list):
+                match = next((e for e in entries if e.get('state') == state), None)
+                if not match:
+                    logger.warning("OAuth state not found in entries")
+                    return False
+                ts = match.get('timestamp', 0)
+                if time.time() - ts > 600:
+                    logger.warning("OAuth state expired")
+                    return False
+                return True
+            else:
+                # backward compat old format
+                stored_state = stored_data.get('state')
+                timestamp = stored_data.get('timestamp', 0)
+                logger.debug(f"Stored state: {stored_state}")
+                logger.debug(f"Provided state: {state}")
+                logger.debug(f"State age: {time.time() - timestamp} seconds")
+                if time.time() - timestamp > 600:
+                    logger.warning("OAuth state expired")
+                    os.remove(state_file)
+                    return False
+                is_valid = stored_state == state
+                if is_valid:
+                    os.remove(state_file)
+                return is_valid
             
         except Exception as e:
             logger.error(f"Could not validate OAuth state: {e}")
@@ -249,7 +270,8 @@ class BaseOAuthTool(BaseTool):
                 "authenticated": True,
                 "provider": self.provider,
                 "scopes": self.scopes,
-                "tool": self.tool_name
+                "tool": self.tool_name,
+                "auth_url": f"/oauth/{self.tool_name.lower()}/auth?profile={self.profile}"
             }
         except PermissionError:
             return {
@@ -257,7 +279,7 @@ class BaseOAuthTool(BaseTool):
                 "provider": self.provider,
                 "scopes": self.scopes,
                 "tool": self.tool_name,
-                "auth_url": f"/oauth/{self.tool_name.lower()}/auth"
+                "auth_url": f"/oauth/{self.tool_name.lower()}/auth?profile={self.profile}"
             }
         except Exception as e:
             return {
