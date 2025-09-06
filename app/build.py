@@ -53,18 +53,22 @@ class BuildSystem:
                             if line and not line.startswith('#'):
                                 requirements.append(line)
                                 
-                                # Parse package name et version
-                                if '>=' in line:
-                                    pkg_name = line.split('>=')[0]
-                                    pkg_version = line.split('>=')[1]
-                                    
-                                    # Garde la version la plus élevée
-                                    if pkg_name not in requirements_dict or pkg_version > requirements_dict[pkg_name]:
-                                        requirements_dict[pkg_name] = pkg_version
+                                # Parse package name et version (support >=, ==, ~=)
+                                for operator in ['>=', '==', '~=', '>', '<', '!=']:
+                                    if operator in line:
+                                        pkg_name = line.split(operator)[0].strip()
+                                        pkg_version = line.split(operator)[1].strip()
+                                        
+                                        # Garde la version la plus élevée pour >=, sinon garde la contrainte exacte
+                                        if operator == '>=' and (pkg_name not in requirements_dict or pkg_version > requirements_dict[pkg_name]):
+                                            requirements_dict[pkg_name] = pkg_version
+                                        elif operator != '>=' or pkg_name not in requirements_dict:
+                                            requirements_dict[pkg_name] = f"{operator}{pkg_version}"
+                                        break
                                 else:
                                     # Pas de version spécifiée
-                                    pkg_name = line
-                                    if pkg_name not in requirements_dict:
+                                    pkg_name = line.strip()
+                                    if pkg_name and pkg_name not in requirements_dict:
                                         requirements_dict[pkg_name] = None
                         
                         if requirements:
@@ -89,7 +93,7 @@ class BuildSystem:
                 with open(self.requirements_built, 'r', encoding='utf-8') as f:
                     lines = f.readlines()
             else:
-                lines = ["# Base requirements\n"]
+                lines = ["# Base requirements\n", "fastapi\n", "uvicorn\n", "apscheduler\n", "\n"]
             
             # Trouve l'index de la section auto-generée
             built_start = -1
@@ -104,17 +108,23 @@ class BuildSystem:
             else:
                 base_lines = lines
                 
+            # Nettoie les lignes vides en fin de section base
+            while base_lines and base_lines[-1].strip() == "":
+                base_lines.pop()
+            
             # Ajoute la section built
             built_lines = [
-                "\n# Auto-generated requirements - DO NOT EDIT\n",
+                "\n\n# Auto-generated requirements - DO NOT EDIT\n",
                 "# Run 'python build.py' to regenerate\n",
                 f"# Consolidated from {len(tools_with_reqs)} tools: {', '.join(tools_with_reqs)}\n"
             ]
             
             for pkg_name in sorted(requirements_dict.keys()):
                 version = requirements_dict[pkg_name]
-                if version:
+                if version and not version.startswith(('>=', '==', '~=', '>', '<', '!=')):
                     built_lines.append(f"{pkg_name}>={version}\n")
+                elif version:
+                    built_lines.append(f"{pkg_name}{version}\n")
                 else:
                     built_lines.append(f"{pkg_name}\n")
             
@@ -229,48 +239,59 @@ class BuildSystem:
         """Met à jour la section built du .env"""
         try:
             # Lit le contenu existant
+            base_content = ""
             if os.path.exists(self.env_built):
                 with open(self.env_built, 'r', encoding='utf-8') as f:
-                    lines = f.readlines()
+                    content = f.read()
+                    
+                # Trouve la section built
+                marker = "# DO NOT EDIT BELOW THIS LINE - Generated content"
+                if marker in content:
+                    base_content = content.split(marker)[0] + marker
+                else:
+                    base_content = content
             else:
-                lines = []
+                # Crée le contenu de base par défaut
+                base_content = """# Base configuration
+APP_NAME=MonSuperAPI
+DEBUG=false
+HOST=127.0.0.1
+PORT=8000
+VERSION=dev
+DATABASE_URL=sqlite:///./database.db
+SECRET_KEY=dev-secret-key-change-in-prod
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# Built configuration (auto-updated by build.py)
+# DO NOT EDIT BELOW THIS LINE - Generated content"""
             
-            # Trouve l'index de la section auto-generée
-            built_start = -1
-            for i, line in enumerate(lines):
-                if "# DO NOT EDIT BELOW THIS LINE - Generated content" in line:
-                    built_start = i
-                    break
-            
-            # Garde seulement la partie base
-            if built_start != -1:
-                base_lines = lines[:built_start + 1]
-            else:
-                base_lines = lines + ["\n# Built configuration (auto-updated by build.py)\n# DO NOT EDIT BELOW THIS LINE - Generated content\n"]
-                
-            # Ajoute les variables built
-            built_lines = [f"\n# Profiles: {', '.join(sorted(profiles_found))}\n"]
+            # Construit la section built
+            built_content = f"\n# Profiles: {', '.join(sorted(profiles_found))}\n"
             
             for key, value in sorted(all_vars.items()):
-                # Escape les valeurs qui contiennent des espaces
-                if ' ' in value and not (value.startswith('"') and value.endswith('"')):
+                # Escape les valeurs qui contiennent des espaces ou caractères spéciaux
+                if (' ' in str(value) or '=' in str(value)) and not (str(value).startswith('"') and str(value).endswith('"')):
                     value = f'"{value}"'
-                built_lines.append(f"{key}={value}\n")
+                built_content += f"{key}={value}\n"
             
             # Écrit le fichier complet
             with open(self.env_built, 'w', encoding='utf-8') as f:
-                f.writelines(base_lines + built_lines)
+                f.write(base_content + built_content)
             
             print(f"📝 Updated {self.env_built} with {len(all_vars)} variables")
             
         except Exception as e:
             print(f"❌ Error updating env file: {e}")
+            import traceback
+            print(traceback.format_exc())
             return 0
     
     def run_full_build(self):
         """Build complet : requirements + env"""
         print("🏗️  Starting build process...")
-        print(f"🔍 Discovered tools: {', '.join(self.discover_tools())}")
+        discovered_tools = self.discover_tools()
+        print(f"🔍 Discovered tools: {', '.join(discovered_tools)}")
         
         req_count = self.build_requirements()
         env_count = self.build_env_file()
@@ -281,8 +302,33 @@ class BuildSystem:
                 print("⚠️  Build completed with installation errors")
                 return False
         
+        # Validation finale
+        self._validate_build()
+        
         print(f"✅ Build complete: {req_count} packages, {env_count} variables")
         return True
+    
+    def _validate_build(self):
+        """Valide que les fichiers générés sont cohérents"""
+        try:
+            # Vérifie requirements.txt
+            if os.path.exists(self.requirements_built):
+                with open(self.requirements_built, 'r') as f:
+                    req_content = f.read()
+                    if "# Auto-generated requirements" not in req_content:
+                        print("⚠️  Warning: requirements.txt missing build section")
+            
+            # Vérifie .env
+            if os.path.exists(self.env_built):
+                with open(self.env_built, 'r') as f:
+                    env_content = f.read()
+                    if "# DO NOT EDIT BELOW THIS LINE" not in env_content:
+                        print("⚠️  Warning: .env missing build section")
+            
+            print("✅ Build validation passed")
+            
+        except Exception as e:
+            print(f"⚠️  Build validation warning: {e}")
 
 def main():
     builder = BuildSystem()
