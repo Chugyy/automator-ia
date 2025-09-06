@@ -532,7 +532,7 @@ class Dashboard {
                 <div class="workflow-actions">
                     <a href="#" onclick="dashboard.runWorkflow('${workflow.name}'); return false;" class="btn-primary" ${workflow.active ? '' : 'style="opacity:0.5;pointer-events:none;"'}>Exécuter</a>
                     <a href="#" onclick="dashboard.showLogs('${workflow.name}'); return false;" class="btn-secondary">Logs</a>
-                    <a href="#" onclick="workflowConfigModal.open('${workflow.name}'); return false;" class="btn-secondary">Configurer les Outils</a>
+                    <a href="#" onclick="workflowConfigModal.open('${workflow.name}'); return false;" class="btn-secondary">Configurer</a>
                 </div>
             </aside>
         `).join('');

@@ -136,6 +136,14 @@ class WorkflowRegistry:
                 from ..tools.notion.main import NotionTool
                 tool_classes['notion'] = NotionTool
             
+            if 'calendar' in db_workflow.tools_required:
+                from ..tools.calendar.main import CalendarTool
+                tool_classes['calendar'] = CalendarTool
+            
+            if 'date' in db_workflow.tools_required:
+                from ..tools.date.main import DateTool
+                tool_classes['date'] = DateTool
+            
             for tool_name in db_workflow.tools_required:
                 if tool_name in tool_classes:
                     profile = db_workflow.tool_profiles.get(tool_name, "DEFAULT")

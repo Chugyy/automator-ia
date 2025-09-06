@@ -13,6 +13,7 @@ from googleapiclient.errors import HttpError
 
 from .base import BaseTool
 from config.logger import logger
+from config.config import settings
 
 # Allow insecure transport for local development
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
@@ -34,7 +35,7 @@ class BaseOAuthTool(BaseTool):
     
     def _get_redirect_uri(self) -> str:
         """Generate redirect URI for this tool"""
-        base_url = self.config.get('oauth_url', 'http://localhost:8000')
+        base_url = self.config.get('oauth_url') or f"http://{settings.host}:{settings.port}"
         return f"{base_url}/oauth/{self.tool_name.lower()}/callback"
     
     def get_auth_url(self) -> str:
