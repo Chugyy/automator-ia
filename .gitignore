@@ -41,7 +41,6 @@ venv
 
 # Build system generated files
 config/built/.env.built
-config/built/requirements-built.txt
 
 *_token.json
 *_credentials.json
