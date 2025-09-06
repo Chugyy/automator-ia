@@ -35,17 +35,16 @@ class BaseOAuthTool(BaseTool):
     
     def _get_redirect_uri(self) -> str:
         """Generate redirect URI for this tool"""
-        # Prefer explicit config; otherwise build from settings, using localhost if bound to 0.0.0.0
+        # Prefer explicit config; otherwise use prod/dev base URLs
         if self.config.get('oauth_url'):
             base_url = self.config['oauth_url']
         else:
-            host = settings.host
-            port = settings.port
-            if not host or host in ('0.0.0.0', '::'):
-                host = 'localhost'
-            base_url = f"http://{host}:{port}"
+            if settings.env == 'prod':
+                base_url = settings.prod_base_url
+            else:
+                base_url = settings.base_url
         return f"{base_url}/oauth/{self.tool_name.lower()}/callback"
-
+        
     # --- Path resolution helpers ---
     def _get_backend_dir(self) -> str:
         tool_dir = os.path.dirname(os.path.abspath(__file__))
