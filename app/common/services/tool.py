@@ -260,49 +260,86 @@ class ToolsService:
     
     @classmethod
     def _load_env_profiles(cls, tool_name: str) -> List[Dict[str, Any]]:
-        """Charge les profils depuis tous les fichiers .env.* du dossier de l'outil"""
-        profiles = []
+        """Charge les profils depuis os.environ, config/.env et les fichiers .env.*"""
         tool_dir = os.path.join(cls.TOOLS_DIR, tool_name)
-        
-        if not os.path.exists(tool_dir):
-            return profiles
-        
-        # Pattern flexible : tous les .env.*
-        env_pattern = ".env.*"
-        env_files = glob.glob(os.path.join(tool_dir, env_pattern))
-        
-        for env_file in env_files:
-            try:
-                filename = os.path.basename(env_file)
-                
-                # Skip .env seul (pas de suffixe)
-                if filename == ".env":
-                    continue
-                    
-                # Extraire le profil : .env.TEST -> TEST, .env.CALENDAR_WORK -> CALENDAR_WORK
-                if filename.startswith(".env."):
-                    profile_name = filename[5:]  # Enlève ".env."
-                else:
-                    continue
-                
-                # Charger les variables d'environnement
-                env_vars = dotenv_values(env_file)
-                
-                # Convertir les clés en minuscules pour correspondre au format attendu
-                config = {key.lower(): value for key, value in env_vars.items() if value}
-                
-                if config:  # Seulement ajouter si on a des données
-                    profiles.append({
-                        "name": profile_name,
-                        "config": config,
-                        "source": "env_file",
-                        "file_path": env_file
-                    })
-                    
-            except Exception as e:
-                print(f"Warning: Failed to load env profile from {env_file}: {e}")
-        
+        profiles_map: Dict[str, Dict[str, Any]] = {}
+        profile_source: Dict[str, str] = {}
+        source_prio = {"env_file": 1, "env_central": 2, "env_runtime": 3}
+
+        def merge(profile: str, cfg: Dict[str, Any], src: str):
+            if not cfg:
+                return
+            if profile not in profiles_map:
+                profiles_map[profile] = {}
+            profiles_map[profile].update(cfg)
+            prev = profile_source.get(profile)
+            if not prev or source_prio[src] > source_prio[prev]:
+                profile_source[profile] = src
+
+        # Schéma pour connaître les noms de paramètres valides
+        schema = cls.get_tool_config_schema(tool_name)
+        required = schema.get("required_params", []) or []
+        optional = list((schema.get("optional_params", {}) or {}).keys())
+        params_upper = {p.upper() for p in (required + optional)}
+
+        # 1) Fichiers .env.* locaux (développement)
+        try:
+            if os.path.exists(tool_dir):
+                env_files = glob.glob(os.path.join(tool_dir, ".env.*"))
+                for env_file in env_files:
+                    filename = os.path.basename(env_file)
+                    if filename == ".env" or not filename.startswith(".env."):
+                        continue
+                    profile_name = filename[5:]
+                    env_vars = dotenv_values(env_file)
+                    config = {k.lower(): v for k, v in env_vars.items() if v}
+                    if config:
+                        merge(profile_name, config, "env_file")
+        except Exception as e:
+            print(f"Warning: Failed to load env profiles for {tool_name}: {e}")
+
+        # 2) Fichier centralisé config/.env (si présent)
+        try:
+            config_env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "config", ".env")
+            if os.path.exists(config_env_file):
+                central_vars = dotenv_values(config_env_file)
+                for profile, cfg in cls._profiles_from_envmap(tool_name, central_vars, params_upper).items():
+                    merge(profile, cfg, "env_central")
+        except Exception:
+            pass
+
+        # 3) Variables d'environnement runtime (Render)
+        for profile, cfg in cls._profiles_from_envmap(tool_name, os.environ, params_upper).items():
+            merge(profile, cfg, "env_runtime")
+
+        # Transforme en liste
+        profiles: List[Dict[str, Any]] = []
+        for name, cfg in profiles_map.items():
+            entry = {"name": name, "config": cfg, "source": profile_source.get(name, "env_runtime")}
+            profiles.append(entry)
         return profiles
+
+    @classmethod
+    def _profiles_from_envmap(cls, tool_name: str, mapping: Dict[str, Any], params_upper: set) -> Dict[str, Dict[str, Any]]:
+        """Extrait {profile: config} depuis un mapping type os.environ pour un outil"""
+        tool_prefix = f"{tool_name.upper()}_"
+        result: Dict[str, Dict[str, Any]] = {}
+        if not params_upper:
+            return result
+        for key, value in mapping.items():
+            if not isinstance(key, str) or not isinstance(value, (str, bytes)):
+                continue
+            if not key.startswith(tool_prefix):
+                continue
+            for param in params_upper:
+                suffix = f"_{param}"
+                if key.endswith(suffix):
+                    profile = key[len(tool_prefix):-len(suffix)]
+                    if not profile:
+                        continue
+                    result.setdefault(profile, {})[param.lower()] = value
+                    break
+        return result
     
     @classmethod
     def get_env_profile_path(cls, tool_name: str, profile_name: str) -> str:
