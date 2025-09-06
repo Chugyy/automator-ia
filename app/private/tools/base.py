@@ -40,41 +40,27 @@ class BaseTool(ABC):
         return {"required_params": [], "optional_params": {}}
     
     def _load_profile_config(self, config_schema: Dict[str, Any]) -> Dict[str, Any]:
-        """Charge la configuration selon VERSION (dev/prod)"""
-        from config.get_version import get_version
-        
+        """Charge la configuration depuis config/.env"""
         config = config_schema.get('optional_params', {}).copy()
         prefix = f"{self.tool_name}_{self.profile}_"
-        version = get_version()
         
-        if version == "prod":
-            env_built_file = "config/built/.env.built"
-            if os.path.exists(env_built_file):
-                from dotenv import dotenv_values
-                built_vars = dotenv_values(env_built_file)
-                
-                for key, value in built_vars.items():
-                    if key.startswith(prefix):
-                        config_key = key[len(prefix):].lower()
-                        config[config_key] = value
+        # Chemin vers le fichier .env central
+        config_env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "config", ".env")
+        
+        if os.path.exists(config_env_file):
+            from dotenv import dotenv_values
+            env_vars = dotenv_values(config_env_file)
             
-            for key, value in os.environ.items():
+            for key, value in env_vars.items():
                 if key.startswith(prefix):
                     config_key = key[len(prefix):].lower()
                     config[config_key] = value
-                    
-        else:
-            tool_dir = os.path.dirname(os.path.abspath(__file__))
-            current_tool_dir = f"{tool_dir}/{self.tool_name.lower()}"
-            env_file = f"{current_tool_dir}/.env.{self.tool_name}_{self.profile}"
-            
-            if os.path.exists(env_file):
-                from dotenv import dotenv_values
-                tool_vars = dotenv_values(env_file)
-                
-                for key, value in tool_vars.items():
-                    if key and value:
-                        config[key.lower()] = value
+        
+        # Aussi vérifier les variables d'environnement système
+        for key, value in os.environ.items():
+            if key.startswith(prefix):
+                config_key = key[len(prefix):].lower()
+                config[config_key] = value
         
         return config
     
