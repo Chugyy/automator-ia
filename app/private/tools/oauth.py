@@ -2,7 +2,6 @@ from abc import ABC
 from typing import Dict, Any, List, Optional
 import os
 import json
-import secrets
 import time
 from urllib.parse import urlencode
 
@@ -35,16 +34,12 @@ class BaseOAuthTool(BaseTool):
     
     def _get_redirect_uri(self) -> str:
         """Generate redirect URI for this tool"""
-        # Prefer explicit config; otherwise use prod/dev base URLs
-        if self.config.get('oauth_url'):
-            base_url = self.config['oauth_url']
+        if settings.version == 'dev':
+            base_url = settings.dev_base_url
         else:
-            if settings.env == 'prod':
-                base_url = settings.prod_base_url
-            else:
-                base_url = settings.base_url
+            base_url = settings.prod_base_url
         return f"{base_url}/oauth/{self.tool_name.lower()}/callback"
-        
+
     # --- Path resolution helpers ---
     def _get_backend_dir(self) -> str:
         tool_dir = os.path.dirname(os.path.abspath(__file__))

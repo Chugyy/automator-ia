@@ -4,6 +4,7 @@ import random
 import re
 import webbrowser
 import time
+
 try:
     from zoneinfo import ZoneInfo
 except Exception:
@@ -150,10 +151,18 @@ def execute(data: Dict[str, Any] = None, tools: Dict[str, Any] = None) -> Dict[s
         try:
             status = calendar_tool.get_oauth_status()
             auth_path = status.get('auth_url', '/oauth/calendar/auth')
-            base = calendar_tool.config.get('oauth_url') or settings.base_url
+            if settings.version == 'dev':
+                base = settings.dev_base_url
+            else:
+                base = settings.prod_base_url
+            
             auth_url_local = auth_path if auth_path.startswith('http') else f"{base}{auth_path}"
         except Exception:
-            auth_url_local = f"{settings.base_url}/oauth/calendar/auth"
+            if settings.version == 'dev':
+                base = settings.dev_base_url
+            else:
+                base = settings.prod_base_url
+            auth_url_local = f"{base}/oauth/calendar/auth"
         try:
             webbrowser.open(auth_url_local)
         except Exception:

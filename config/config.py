@@ -13,9 +13,6 @@ class Settings(BaseSettings):
     prod_base_url: str = Field(env="PROD_BASE_URL")
     dev_base_url: str = f"http://{host}:{port}"
     
-    @property
-    def base_url(self) -> str:
-        return self.dev_base_url if self.version == "dev" else self.prod_base_url
     class Config:
         env_file = "config/.env"
         env_file_encoding = "utf-8"
