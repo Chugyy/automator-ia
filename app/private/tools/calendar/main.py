@@ -8,7 +8,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from ..oauth import BaseOAuthTool
-from config.common.logger import logger
+from config.logger import logger
 
 SCOPES_READ_ONLY = ['https://www.googleapis.com/auth/calendar.readonly']
 SCOPES_FULL_ACCESS = ['https://www.googleapis.com/auth/calendar']

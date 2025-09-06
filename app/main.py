@@ -11,9 +11,9 @@ from pydantic import BaseModel
 from typing import Dict, Any
 from contextlib import asynccontextmanager
 
-from config.common.config import settings
-from config.common.logger import logger
-from config.built.get_version import get_version
+from config.config import settings
+from config.logger import logger
+from config.get_version import get_version
 
 def run_build_system():
     """Lance le système de build avant de démarrer le serveur"""

@@ -41,7 +41,7 @@ class BaseTool(ABC):
     
     def _load_profile_config(self, config_schema: Dict[str, Any]) -> Dict[str, Any]:
         """Charge la configuration selon VERSION (dev/prod)"""
-        from config.built.get_version import get_version
+        from config.get_version import get_version
         
         config = config_schema.get('optional_params', {}).copy()
         prefix = f"{self.tool_name}_{self.profile}_"

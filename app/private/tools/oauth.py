@@ -12,7 +12,7 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.errors import HttpError
 
 from .base import BaseTool
-from config.common.logger import logger
+from config.logger import logger
 
 # Allow insecure transport for local development
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'

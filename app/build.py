@@ -15,8 +15,8 @@ class BuildSystem:
     def __init__(self):
         self.tools_dir = "private/tools"
         self.config_dir = "../config"
-        self.requirements_built = f"{self.config_dir}/built/requirements-built.txt"
-        self.env_built = f"{self.config_dir}/built/.env.built"
+        self.requirements_built = f"{self.config_dir}/requirements.txt"
+        self.env_built = f"{self.config_dir}/.env"
     
     def discover_tools(self):
         """Scan tools directory pour découvrir tous les outils"""
@@ -74,30 +74,59 @@ class BuildSystem:
                 except Exception as e:
                     print(f"  ❌ Error reading {req_file}: {e}")
         
-        # Crée le dossier built s'il n'existe pas
-        os.makedirs(f"{self.config_dir}/built", exist_ok=True)
+        # Le dossier config existe déjà
         
-        # Écrit le fichier consolidé
-        try:
-            with open(self.requirements_built, 'w', encoding='utf-8') as f:
-                f.write("# Auto-generated requirements - DO NOT EDIT\n")
-                f.write("# Run 'python build.py' to regenerate\n")
-                f.write(f"# Consolidated from {len(tools_with_reqs)} tools: {', '.join(tools_with_reqs)}\n\n")
-                
-                for pkg_name in sorted(requirements_dict.keys()):
-                    version = requirements_dict[pkg_name]
-                    if version:
-                        f.write(f"{pkg_name}>={version}\n")
-                    else:
-                        f.write(f"{pkg_name}\n")
-            
-            print(f"📝 Created {self.requirements_built} with {len(requirements_dict)} packages")
-            
-        except Exception as e:
-            print(f"❌ Error writing requirements file: {e}")
-            return 0
+        # Met à jour la section built du requirements.txt
+        self._update_requirements_section(requirements_dict, tools_with_reqs)
             
         return len(requirements_dict)
+    
+    def _update_requirements_section(self, requirements_dict, tools_with_reqs):
+        """Met à jour la section built du requirements.txt"""
+        try:
+            # Lit le contenu existant
+            if os.path.exists(self.requirements_built):
+                with open(self.requirements_built, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+            else:
+                lines = ["# Base requirements\n"]
+            
+            # Trouve l'index de la section auto-generée
+            built_start = -1
+            for i, line in enumerate(lines):
+                if "# Auto-generated requirements - DO NOT EDIT" in line:
+                    built_start = i
+                    break
+            
+            # Garde seulement la partie base
+            if built_start != -1:
+                base_lines = lines[:built_start]
+            else:
+                base_lines = lines
+                
+            # Ajoute la section built
+            built_lines = [
+                "\n# Auto-generated requirements - DO NOT EDIT\n",
+                "# Run 'python build.py' to regenerate\n",
+                f"# Consolidated from {len(tools_with_reqs)} tools: {', '.join(tools_with_reqs)}\n"
+            ]
+            
+            for pkg_name in sorted(requirements_dict.keys()):
+                version = requirements_dict[pkg_name]
+                if version:
+                    built_lines.append(f"{pkg_name}>={version}\n")
+                else:
+                    built_lines.append(f"{pkg_name}\n")
+            
+            # Écrit le fichier complet
+            with open(self.requirements_built, 'w', encoding='utf-8') as f:
+                f.writelines(base_lines + built_lines)
+            
+            print(f"📝 Updated {self.requirements_built} with {len(requirements_dict)} packages")
+            
+        except Exception as e:
+            print(f"❌ Error updating requirements file: {e}")
+            return 0
     
     def install_requirements(self):
         """Installe les dépendances consolidées"""
@@ -191,26 +220,52 @@ class BuildSystem:
             except Exception as e:
                 print(f"  ❌ Error reading {env_file}: {e}")
         
-        # Écrit .env.built
-        try:
-            with open(self.env_built, 'w', encoding='utf-8') as f:
-                f.write("# Auto-generated environment - DO NOT EDIT\n")
-                f.write("# Run 'python build.py' to regenerate\n")
-                f.write(f"# Profiles: {', '.join(sorted(profiles_found))}\n\n")
-                
-                for key, value in sorted(all_vars.items()):
-                    # Escape les valeurs qui contiennent des espaces
-                    if ' ' in value and not (value.startswith('"') and value.endswith('"')):
-                        value = f'"{value}"'
-                    f.write(f"{key}={value}\n")
-            
-            print(f"📝 Created {self.env_built} with {len(all_vars)} variables")
-            
-        except Exception as e:
-            print(f"❌ Error writing env file: {e}")
-            return 0
+        # Met à jour la section built du .env
+        self._update_env_section(all_vars, profiles_found)
             
         return len(all_vars)
+    
+    def _update_env_section(self, all_vars, profiles_found):
+        """Met à jour la section built du .env"""
+        try:
+            # Lit le contenu existant
+            if os.path.exists(self.env_built):
+                with open(self.env_built, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+            else:
+                lines = []
+            
+            # Trouve l'index de la section auto-generée
+            built_start = -1
+            for i, line in enumerate(lines):
+                if "# DO NOT EDIT BELOW THIS LINE - Generated content" in line:
+                    built_start = i
+                    break
+            
+            # Garde seulement la partie base
+            if built_start != -1:
+                base_lines = lines[:built_start + 1]
+            else:
+                base_lines = lines + ["\n# Built configuration (auto-updated by build.py)\n# DO NOT EDIT BELOW THIS LINE - Generated content\n"]
+                
+            # Ajoute les variables built
+            built_lines = [f"\n# Profiles: {', '.join(sorted(profiles_found))}\n"]
+            
+            for key, value in sorted(all_vars.items()):
+                # Escape les valeurs qui contiennent des espaces
+                if ' ' in value and not (value.startswith('"') and value.endswith('"')):
+                    value = f'"{value}"'
+                built_lines.append(f"{key}={value}\n")
+            
+            # Écrit le fichier complet
+            with open(self.env_built, 'w', encoding='utf-8') as f:
+                f.writelines(base_lines + built_lines)
+            
+            print(f"📝 Updated {self.env_built} with {len(all_vars)} variables")
+            
+        except Exception as e:
+            print(f"❌ Error updating env file: {e}")
+            return 0
     
     def run_full_build(self):
         """Build complet : requirements + env"""

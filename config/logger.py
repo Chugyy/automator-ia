@@ -1,7 +1,7 @@
 # app/logger.py
 import logging
 from logging.handlers import RotatingFileHandler
-from config.common.config import settings
+from config.config import settings
 
 LOG_FORMAT = "%(asctime)s — %(name)s — %(levelname)s — %(message)s"
 LOG_LEVEL = logging.DEBUG if settings.debug else logging.INFO

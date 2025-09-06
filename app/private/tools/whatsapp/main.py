@@ -3,7 +3,7 @@ import functools
 import time
 from typing import Dict, Any, List
 from ..base import BaseTool
-from config.common.logger import logger
+from config.logger import logger
 
 def with_retry(max_retries: int = 3, delay: float = 1.0):
     """Retry decorator for API calls"""

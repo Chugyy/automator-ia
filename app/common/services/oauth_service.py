@@ -5,7 +5,7 @@ from typing import Dict, Any, List
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
-from config.common.logger import logger
+from config.logger import logger
 
 class OAuthService:
     """Service for auto-discovery and registration of OAuth routes"""

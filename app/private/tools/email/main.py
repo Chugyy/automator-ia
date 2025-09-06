@@ -6,7 +6,7 @@ from email.mime.multipart import MIMEMultipart
 from typing import Dict, Any, List, Optional
 
 from ..base import BaseTool
-from config.common.logger import logger
+from config.logger import logger
 
 class EmailTool(BaseTool):
     """Email tool with full SMTP/IMAP integration"""

@@ -9,8 +9,8 @@ def get_version():
     if version:
         return version
     
-    # Priorité 2: Fichier .env racine
-    env_file = Path("../../.env")
+    # Priorité 2: Fichier .env local (config/.env)
+    env_file = Path("config/.env")
     if env_file.exists():
         env_vars = dotenv_values(str(env_file))
         version = env_vars.get("VERSION")

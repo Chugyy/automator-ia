@@ -1,7 +1,7 @@
 from typing import Dict, Any, List
 from ..base import BaseTool
 from .config import YouTubeConfig
-from config.common.logger import logger
+from config.logger import logger
 
 
 class YouTubeTool(BaseTool):

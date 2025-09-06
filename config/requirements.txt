@@ -1,7 +1,13 @@
+# Base requirements
+fastapi
+uvicorn
+apscheduler
+
+
+
 # Auto-generated requirements - DO NOT EDIT
 # Run 'python build.py' to regenerate
 # Consolidated from 5 tools: calendar, notion, slack, whatsapp, youtube
-
 google-api-python-client>=2.88.0
 google-auth-httplib2>=0.1.0
 google-auth-oauthlib>=0.8.0
