@@ -1,0 +1,81 @@
+{
+  "tool_name": "email",
+  "display_name": "Email",
+  "description": "Gestion complète d'emails avec support SMTP/IMAP pour envoi et réception",
+  "required_params": ["smtp_host", "smtp_port", "email", "password"],
+  "optional_params": {
+    "imap_host": "imap.gmail.com",
+    "imap_port": 993,
+    "use_tls": true,
+    "timeout": 30
+  },
+  "actions": {
+    "send_email": {
+      "description": "Envoie un email via SMTP avec support CC, BCC",
+      "parameters": {
+        "to": "Destinataires (requis): liste ou string",
+        "subject": "Sujet de l'email",
+        "body": "Corps du message en texte",
+        "cc": "Copie (optionnel): liste d'emails",
+        "bcc": "Copie cachée (optionnel): liste d'emails"
+      },
+      "example": {
+        "action": "send_email",
+        "params": {
+          "to": ["client@example.com"],
+          "subject": "Proposition commerciale",
+          "body": "Bonjour,\n\nVeuillez trouver notre proposition.\n\nCordialement",
+          "cc": ["manager@company.com"]
+        }
+      }
+    },
+    "get_emails": {
+      "description": "Récupère les emails via IMAP avec filtres",
+      "parameters": {
+        "folder": "Dossier IMAP (défaut: INBOX)",
+        "limit": "Nombre d'emails (1-100, défaut: 10)",
+        "unread_only": "Seulement non lus (défaut: false)",
+        "search_query": "Recherche dans le sujet (optionnel)"
+      },
+      "examples": {
+        "recent": {
+          "action": "get_emails",
+          "params": {"limit": 5}
+        },
+        "unread": {
+          "action": "get_emails", 
+          "params": {"unread_only": true}
+        },
+        "search": {
+          "action": "get_emails",
+          "params": {"search_query": "invoice"}
+        }
+      }
+    }
+  },
+  "profile_examples": {
+    "GMAIL": {
+      "smtp_host": "smtp.gmail.com",
+      "smtp_port": 587,
+      "imap_host": "imap.gmail.com", 
+      "imap_port": 993,
+      "email": "your.email@gmail.com",
+      "password": "your_app_password",
+      "use_tls": true
+    },
+    "OUTLOOK": {
+      "smtp_host": "smtp-mail.outlook.com",
+      "smtp_port": 587,
+      "imap_host": "outlook.office365.com",
+      "imap_port": 993, 
+      "email": "your.email@outlook.com",
+      "password": "your_password",
+      "use_tls": true
+    }
+  },
+  "security_notes": {
+    "gmail": "Utiliser un mot de passe d'application (pas votre mot de passe principal)",
+    "outlook": "Activer l'authentification moderne si nécessaire",
+    "general": "Variables d'environnement recommandées pour les credentials"
+  }
+}

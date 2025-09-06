@@ -1,0 +1,28 @@
+{
+  "tool_name": "notion",
+  "display_name": "Notion",
+  "description": "Gestion des bases de données et pages Notion",
+  "required_params": ["token"],
+  "optional_params": {
+    "database_id": null,
+    "page_size": 100,
+    "timeout": 30
+  },
+  "profile_examples": {
+    "CRM": {
+      "token": "secret_crm_token_example",
+      "database_id": "crm_database_id_example",
+      "page_size": 50
+    },
+    "DOCS": {
+      "token": "secret_docs_token_example", 
+      "database_id": "docs_database_id_example",
+      "timeout": 60
+    },
+    "PROJECTS": {
+      "token": "secret_projects_token_example",
+      "database_id": "projects_database_id_example",
+      "page_size": 200
+    }
+  }
+}

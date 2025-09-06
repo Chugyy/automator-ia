@@ -1,0 +1,3 @@
+# Slack tool dependencies
+slack-sdk>=3.19.0
+requests>=2.25.1

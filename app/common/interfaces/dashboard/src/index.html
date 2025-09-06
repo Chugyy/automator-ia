@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workflow Dashboard</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <header class="main-header">
+        <h1>Tableau de Bord</h1>
+        <p>Gestion centralisée des workflows</p>
+    </header>
+    
+    <main>
+        <section id="stats">
+            <header class="section-header">
+                <h2>Vue d'ensemble</h2>
+            </header>
+            <div class="content-wrapper">
+                <aside>
+                    <h3 id="active-workflows">-</h3>
+                    <p>Workflows actifs</p>
+                </aside>
+            </div>
+        </section>
+        
+        <hr>
+        
+        <section>
+            <header class="section-header">
+                <h2>Gestion des Outils</h2>
+            </header>
+            <div class="content-wrapper">
+                <div id="tools">
+                    <div class="loading">Chargement des outils...</div>
+                </div>
+            </div>
+        </section>
+        
+        <hr>
+        
+        <section>
+            <header class="section-header">
+                <h2>Workflows Disponibles</h2>
+            </header>
+            <div class="content-wrapper">
+                <div id="workflows">
+                    <div class="loading">Chargement des workflows...</div>
+                </div>
+            </div>
+        </section>
+        
+        <hr>
+        
+        <section>
+            <header class="section-header">
+                <h2>Interfaces Spécialisées</h2>
+            </header>
+            <div class="content-wrapper">
+                <div id="interfaces">
+                    <div class="loading">Chargement des interfaces...</div>
+                </div>
+            </div>
+        </section>
+        
+        <section id="logs-section" style="display:none;">
+            <header class="section-header">
+                <h2>Logs des Workflows</h2>
+                <button onclick="closeLogs()" class="btn-secondary">Fermer</button>
+            </header>
+            <div class="content-wrapper">
+                <div id="logs-content">
+                    <div class="loading">Chargement des logs...</div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="./script.js"></script>
+</body>
+</html>

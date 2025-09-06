@@ -1,0 +1,28 @@
+{
+  "tool_name": "slack",
+  "display_name": "Slack",
+  "description": "Envoi de messages et gestion des canaux Slack",
+  "required_params": ["token"],
+  "optional_params": {
+    "channel": "#general",
+    "timeout": 30,
+    "max_messages": 100
+  },
+  "profile_examples": {
+    "MARKETING": {
+      "token": "xoxb-marketing-token-example",
+      "channel": "#marketing",
+      "max_messages": 50
+    },
+    "SUPPORT": {
+      "token": "xoxb-support-token-example",
+      "channel": "#support",
+      "timeout": 60
+    },
+    "SALES": {
+      "token": "xoxb-sales-token-example",
+      "channel": "#sales",
+      "max_messages": 200
+    }
+  }
+}
