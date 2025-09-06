@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     port: int = Field(10000, env="PORT")
     version: str = Field("dev", env="VERSION")
     database_url: str = Field("sqlite:///./database.db", env="DATABASE_URL")
-    prod_base_url: str = Field(env="PROD_BASE_URL")
+    prod_base_url: str = Field("https://automator-ia.onrender.com", env="PROD_BASE_URL")
     dev_base_url: str = f"http://{host}:{port}"
     
     class Config:
