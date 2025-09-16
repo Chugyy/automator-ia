@@ -51,6 +51,10 @@ venv
 !**/workflows/sample/
 **/temp/
 
+# Tests content but keep tests directory
+tests/*
+!tests/.gitkeep
+
 # Tokens and credentials
 .oauth*
 *_token.json
