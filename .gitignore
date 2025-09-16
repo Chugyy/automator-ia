@@ -40,8 +40,9 @@ venv
 !.env.DEFAULT
 
 # Samples only
-!sample/*
-!*sample*
+!tools/sample/
+!workflows/sample/
+!sample.py
 
 # Tools, workflows, temp
 tools/
