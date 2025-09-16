@@ -41,6 +41,7 @@ venv
 
 # Samples only
 !tools/sample/
+!tools/date/
 !workflows/sample/
 !sample.py
 
@@ -48,7 +49,6 @@ venv
 tools/
 workflows/
 temp/
-!tools/date/
 
 # Tokens and credentials
 .oauth*
