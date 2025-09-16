@@ -1,0 +1,76 @@
+{
+    "name": "Example Workflow",
+    "description": "Workflow d'exemple démontrant tous les types d'inputs",
+    "inputs_schema": [
+        {
+            "name": "api_key",
+            "type": "password",
+            "label": "Clé API",
+            "required": true,
+            "description": "Votre clé API secrète"
+        },
+        {
+            "name": "target_message",
+            "type": "text",
+            "label": "Message",
+            "required": false,
+            "description": "Message à traiter"
+        },
+        {
+            "name": "event_date",
+            "type": "datetime",
+            "label": "Date événement",
+            "required": true,
+            "description": "Date et heure de l'événement"
+        },
+        {
+            "name": "priority",
+            "type": "number",
+            "label": "Priorité",
+            "required": false,
+            "min": 1,
+            "max": 10,
+            "default": 5,
+            "description": "Niveau de priorité (1-10)"
+        },
+        {
+            "name": "is_urgent",
+            "type": "checkbox",
+            "label": "Urgent",
+            "required": false,
+            "default": false,
+            "description": "Marquer comme urgent"
+        },
+        {
+            "name": "category",
+            "type": "select",
+            "label": "Catégorie",
+            "required": true,
+            "options": [
+                {"value": "work", "label": "Travail"},
+                {"value": "personal", "label": "Personnel"},
+                {"value": "meeting", "label": "Réunion"}
+            ],
+            "description": "Catégorie de l'événement"
+        },
+        {
+            "name": "tags",
+            "type": "multiselect",
+            "label": "Tags",
+            "required": false,
+            "min": 0,
+            "max": 3,
+            "options": [
+                {"value": "important", "label": "Important"},
+                {"value": "deadline", "label": "Échéance"},
+                {"value": "project", "label": "Projet"},
+                {"value": "client", "label": "Client"}
+            ],
+            "description": "Tags associés (max 3)"
+        }
+    ],
+    "tools_profiles": {
+        "example": "INPUT_API_KEY",
+        "google_calendar": "TEST"
+    }
+}

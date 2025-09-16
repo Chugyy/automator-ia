@@ -1,0 +1,37 @@
+{
+    "name": "Example Tool",
+    "description": "Outil d'exemple pour démonstration",
+    "required_params": ["api_key"],
+    "optional_params": {
+        "base_url": "https://api.example.com",
+        "timeout": 30
+    },
+    "inputs_schema": [
+        {
+            "name": "api_key",
+            "type": "password",
+            "label": "Clé API",
+            "required": true,
+            "description": "Votre clé API Example"
+        }
+    ],
+    "actions": [
+        {
+            "name": "example_action",
+            "description": "Action d'exemple",
+            "params": [
+                {
+                    "name": "message",
+                    "type": "string",
+                    "required": false,
+                    "description": "Message à traiter"
+                }
+            ]
+        },
+        {
+            "name": "test_connection",
+            "description": "Test de connexion",
+            "params": []
+        }
+    ]
+}

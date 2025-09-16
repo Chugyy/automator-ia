@@ -44,12 +44,12 @@ venv
 !*sample*
 
 # Tools, workflows, temp
-tools/
-!tools/date/
-!tools/sample/
-workflows/
-!workflows/sample/
-temp/
+**/tools/*
+!**/tools/date/
+!**/tools/sample/
+**/workflows/*
+!**/workflows/sample/
+**/temp/
 
 # Tokens and credentials
 .oauth*
