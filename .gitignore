@@ -39,22 +39,19 @@ venv
 !.env.example
 !.env.DEFAULT
 
+# Samples only
 !sample/*
-!sample.py
-!tools/date/*
+!*sample*
+
+# Tools, workflows, temp
 tools/
 workflows/
-
-!oauth.py
-!base.py
-!registry.py
-
 temp/
+
+# Tokens and credentials
 .oauth*
-tests/*
+*_token.json
+*_credentials.json
 
 # Build system generated files
 config/built/.env.built
-
-*_token.json
-*_credentials.json
