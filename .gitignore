@@ -49,7 +49,6 @@ venv
 !**/tools/sample/
 **/workflows/*
 !**/workflows/sample/
-**/temp/
 
 # Tests content but keep tests directory
 tests/*
