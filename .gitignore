@@ -40,14 +40,15 @@ venv
 !.env.DEFAULT
 
 # Samples only
-!tools/sample/
-!tools/date/
-!workflows/sample/
-!sample.py
+!sample/*
+!*sample*
 
 # Tools, workflows, temp
 tools/
+!tools/date/
+!tools/sample/
 workflows/
+!workflows/sample/
 temp/
 
 # Tokens and credentials
