@@ -74,6 +74,10 @@ async def lifespan(app: FastAPI):
     setup_interface_routes()
     workflow_scheduler.start()
     logger.info("⏰ Workflow scheduler started")
+    
+    # Vérification des statuts OAuth au démarrage
+    await check_oauth_status_on_startup()
+    
     logger.info("✅ Platform ready")
     
     yield
@@ -81,6 +85,42 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("🛑 Workflow Platform shutting down")
     workflow_scheduler.stop()
+
+async def check_oauth_status_on_startup():
+    """Vérifie l'état des comptes OAuth au démarrage"""
+    try:
+        oauth_tools = OAuthService.discover_oauth_tools()
+        if oauth_tools:
+            logger.info(f"🔐 Checking OAuth status for {len(oauth_tools)} tools")
+            
+            # Import ToolsService pour récupérer les profils
+            from app.common.services.tool import ToolsService
+            
+            for tool_name, tool_info in oauth_tools.items():
+                try:
+                    # Récupérer le premier profil disponible pour cet outil
+                    profiles = ToolsService.get_tool_profiles(tool_name)
+                    if not profiles:
+                        logger.warning(f"❌ {tool_name}: No profiles found")
+                        continue
+                        
+                    first_profile = profiles[0].get('name', 'DEFAULT')
+                    
+                    if tool_info.get('unified_google'):
+                        service = tool_info['google_service']
+                        tool_instance = OAuthService._get_google_tool_instance(service, first_profile, tool_info)
+                    else:
+                        tool_instance = OAuthService._get_tool_instance(tool_name, tool_info, first_profile)
+                    
+                    status = tool_instance.get_oauth_status()
+                    auth_status = "✅" if status.get('authenticated') else "❌"
+                    logger.info(f"{auth_status} {tool_name} ({first_profile}): {'Connected' if status.get('authenticated') else 'Disconnected'}")
+                except Exception as e:
+                    logger.warning(f"❌ {tool_name}: Error checking status - {e}")
+        else:
+            logger.info("🔐 No OAuth tools found")
+    except Exception as e:
+        logger.error(f"❌ OAuth status check failed: {e}")
 
 # --- Création de l'app ---
 app = FastAPI(
@@ -103,7 +143,7 @@ class WebhookRequest(BaseModel):
 @app.get("/")
 def root():
     """Redirection vers le dashboard principal"""
-    return RedirectResponse(url="/dashboard")
+    return RedirectResponse(url="/dashboard/")
 
 # --- Endpoints de santé ---
 @app.get("/health", tags=["health"])
@@ -188,6 +228,87 @@ def get_scheduled_jobs():
 def list_interfaces():
     """Liste toutes les interfaces disponibles"""
     return interface_registry.get_interface_cards()
+
+# --- API OAuth Status ---
+@app.get("/api/oauth/status", tags=["oauth"])
+def get_oauth_status():
+    """Récupère l'état de tous les outils OAuth"""
+    try:
+        oauth_tools = OAuthService.discover_oauth_tools()
+        status_data = {}
+        
+        for tool_name, tool_info in oauth_tools.items():
+            try:
+                if tool_info.get('unified_google'):
+                    service = tool_info['google_service']
+                    tool_instance = OAuthService._get_google_tool_instance(service, 'DEFAULT', tool_info)
+                else:
+                    tool_instance = OAuthService._get_tool_instance(tool_name, tool_info)
+                
+                status = tool_instance.get_oauth_status()
+                
+                # Génération des liens d'auth par profil dynamiques
+                auth_links = {}
+                from app.common.services.tool import ToolsService
+                tool_profiles = ToolsService.get_tool_profiles(tool_name)
+                profiles = [p.get('name') for p in tool_profiles if p.get('name')]
+                if not profiles:
+                    profiles = ['DEFAULT']  # Fallback seulement si aucun profil trouvé
+                
+                for profile in profiles:
+                    if tool_info.get('unified_google'):
+                        auth_links[profile] = f"/oauth/google/auth?service={service}&profile={profile}"
+                    else:
+                        auth_links[profile] = f"/oauth/{tool_name}/auth?profile={profile}"
+                
+                status_data[tool_name] = {
+                    **status,
+                    'display_name': tool_info.get('display_name', tool_name),
+                    'service_type': tool_info.get('google_service') if tool_info.get('unified_google') else 'oauth',
+                    'auth_links': auth_links
+                }
+                
+            except Exception as e:
+                status_data[tool_name] = {
+                    'authenticated': False,
+                    'error': str(e),
+                    'display_name': tool_info.get('display_name', tool_name),
+                    'service_type': tool_info.get('google_service') if tool_info.get('unified_google') else 'oauth',
+                    'auth_links': {}
+                }
+        
+        return {
+            'tools': status_data,
+            'total_tools': len(oauth_tools),
+            'connected_tools': len([t for t in status_data.values() if t.get('authenticated')])
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get OAuth status: {str(e)}")
+
+@app.get("/api/oauth/status/{tool_name}", tags=["oauth"])
+def get_tool_oauth_status(tool_name: str, profile: str = "DEFAULT"):
+    """Récupère l'état OAuth d'un outil spécifique"""
+    try:
+        oauth_tools = OAuthService.discover_oauth_tools()
+        
+        if tool_name not in oauth_tools:
+            raise HTTPException(status_code=404, detail=f"OAuth tool '{tool_name}' not found")
+        
+        tool_info = oauth_tools[tool_name]
+        
+        if tool_info.get('unified_google'):
+            service = tool_info['google_service']
+            tool_instance = OAuthService._get_google_tool_instance(service, profile, tool_info)
+        else:
+            tool_instance = OAuthService._get_tool_instance(tool_name, tool_info, profile)
+        
+        return tool_instance.get_oauth_status()
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get status for {tool_name}: {str(e)}")
 
 # --- Hot Reload ---
 @app.post("/api/reload", tags=["admin"])

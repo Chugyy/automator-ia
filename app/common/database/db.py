@@ -1,6 +1,7 @@
 import sqlite3
 from pathlib import Path
 import json
+from contextlib import contextmanager
 
 DB_PATH = Path(__file__).parent / "database.db"
 
@@ -139,4 +140,21 @@ def init_db():
 def get_db_connection():
     if not DB_PATH.exists():
         init_db()
-    return sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 30000")
+    return conn
+
+@contextmanager
+def get_db_transaction():
+    """Gestionnaire de contexte pour transactions atomiques"""
+    conn = get_db_connection()
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()

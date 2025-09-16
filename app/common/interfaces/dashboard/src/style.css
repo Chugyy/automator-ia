@@ -14,6 +14,8 @@
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   --radius: 8px;
   --font: system-ui, -apple-system, sans-serif;
+  --oauth-connected: #dcfce7;
+  --oauth-disconnected: #fef2f2;
 }
 
 * {
@@ -442,14 +444,28 @@ input:checked + .slider:before {
   align-items: center;
 }
 
+.modal.fade {
+  display: flex;
+}
+
 .modal-content {
   background: var(--background);
   border-radius: var(--radius);
   box-shadow: var(--shadow-lg);
   width: 90%;
-  max-width: 800px;
+  max-width: 600px;
   max-height: 90vh;
   overflow-y: auto;
+}
+
+.modal-dialog {
+  width: 100%;
+  max-width: 600px;
+  margin: 1.75rem auto;
+}
+
+.modal-lg .modal-dialog {
+  max-width: 800px;
 }
 
 .modal-header {
@@ -791,4 +807,212 @@ input:checked + .slider:before {
     flex-direction: column;
     gap: 0.25rem;
   }
+}
+
+/* OAuth Status Styles */
+.oauth-status {
+  margin: 0.75rem 0;
+  padding: 0.5rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  font-size: 0.875rem;
+}
+
+.oauth-status.connected {
+  background: var(--oauth-connected);
+  border-color: var(--success);
+  color: #166534;
+}
+
+.oauth-status.disconnected {
+  background: var(--oauth-disconnected);
+  border-color: var(--danger);
+  color: #991b1b;
+}
+
+.connection-indicator {
+  margin-right: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.connection-dropdown {
+  margin-top: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.profile-selector {
+  flex: 1;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.btn-connect {
+  padding: 0.25rem 0.75rem;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-connect:hover {
+  background: var(--primary-hover);
+}
+
+/* Tool Card OAuth States */
+.tool-card.oauth-connected {
+  border-left: 4px solid var(--success);
+}
+
+.tool-card.oauth-disconnected {
+  border-left: 4px solid var(--warning);
+}
+
+/* Workflow Result Modal Styles */
+.result-status {
+  padding: 1rem;
+  border-radius: var(--radius);
+  margin-bottom: 1rem;
+  font-weight: 500;
+}
+
+.result-status.success {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.result-status.error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.result-status.unknown {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+.result-message {
+  margin: 1rem 0;
+  padding: 0.75rem;
+  background: var(--surface);
+  border-radius: var(--radius);
+}
+
+.result-data {
+  margin: 1rem 0;
+}
+
+.result-data pre {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 1rem;
+  border-radius: var(--radius);
+  overflow-x: auto;
+  font-size: 0.875rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* Workflow form styles */
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.form-control {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  transition: border-color 0.2s ease;
+  box-sizing: border-box;
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.form-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.form-check-input {
+  width: auto;
+  margin: 0;
+}
+
+.form-check-label {
+  margin: 0;
+  cursor: pointer;
+}
+
+.multiselect-container {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  background: var(--surface);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.multiselect-container .form-check {
+  margin-bottom: 0.5rem;
+}
+
+.multiselect-container .form-check:last-child {
+  margin-bottom: 0;
+}
+
+.form-text {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+/* Workflows inactifs */
+#workflows aside.inactive {
+  opacity: 0.6;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+}
+
+#workflows aside.inactive h3 {
+  color: var(--text-secondary);
+}
+
+#workflows aside.inactive .workflow-actions .btn-primary {
+  opacity: 0.5;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+.form-text {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  line-height: 1.3;
 }

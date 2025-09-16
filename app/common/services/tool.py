@@ -9,13 +9,19 @@ from app.common.database.models import ToolModel, ToolProfileModel
 
 class ToolsService:
     TOOLS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "private", "tools")
+    _sync_done = False  # Flag pour éviter la sync multiple
     
     @classmethod
     def get_available_tools(cls) -> List[Dict[str, Any]]:
         tools_data = []
         
-        # Force sync filesystem tools with database
-        cls._sync_tools_to_db()
+        # Force sync filesystem tools with database seulement une fois
+        if not cls._sync_done:
+            try:
+                cls._sync_tools_to_db()
+                cls._sync_done = True
+            except Exception as e:
+                print(f"⚠️ Sync tools to DB failed: {e} - continuing with existing tools")
         
         # Get tools from database
         db_tools = list_tools()
@@ -218,26 +224,48 @@ class ToolsService:
             filesystem_tools.add(tool_name)
             
             if tool_name not in existing_tools:
-                # Charger le display_name depuis config.json
                 try:
-                    with open(config_file, 'r', encoding='utf-8') as f:
-                        config_data = json.load(f)
-                    display_name = config_data.get("display_name", tool_name.title())
-                except:
-                    display_name = tool_name.title()
-                
-                tool = ToolModel(
-                    name=tool_name,
-                    display_name=display_name,
-                    logo_path=os.path.join(tool_dir, "logo.png"),
-                    config_path=config_file,
-                    readme_path=os.path.join(tool_dir, "README.md")
-                )
-                tool_id = create_tool(tool)
-                print(f"✅ Outil {tool_name} ajouté en base de données")
-                
-                # Note: les profils sont maintenant chargés depuis les fichiers .env
-                cls._create_default_profiles(tool_id, tool_name)
+                    # Charger le display_name depuis config.json
+                    try:
+                        with open(config_file, 'r', encoding='utf-8') as f:
+                            config_data = json.load(f)
+                        display_name = config_data.get("display_name", tool_name.title())
+                    except:
+                        display_name = tool_name.title()
+                    
+                    # Vérifier si l'outil existe déjà
+                    existing_tool = get_tool_by_name(tool_name, active_only=False)
+                    
+                    if existing_tool:
+                        # Mettre à jour l'outil existant
+                        updates = {
+                            "display_name": display_name,
+                            "logo_path": os.path.join(tool_dir, "logo.png"),
+                            "config_path": config_file,
+                            "readme_path": os.path.join(tool_dir, "README.md"),
+                            "active": True
+                        }
+                        if update_tool(existing_tool.id, updates):
+                            print(f"🔄 Outil {tool_name} mis à jour")
+                        tool_id = existing_tool.id
+                    else:
+                        # Créer nouvel outil
+                        tool = ToolModel(
+                            name=tool_name,
+                            display_name=display_name,
+                            logo_path=os.path.join(tool_dir, "logo.png"),
+                            config_path=config_file,
+                            readme_path=os.path.join(tool_dir, "README.md")
+                        )
+                        tool_id = create_tool(tool)
+                        if tool_id:
+                            print(f"✅ Outil {tool_name} ajouté en base de données")
+                    
+                    # Créer profils par défaut si nécessaire
+                    if tool_id:
+                        cls._create_default_profiles(tool_id, tool_name)
+                except Exception as e:
+                    print(f"⚠️ Erreur traitement outil {tool_name}: {e}")
         
         # 2. Désactiver les outils orphelins (présents en DB mais absents du filesystem)
         for tool_name, tool in existing_tools.items():

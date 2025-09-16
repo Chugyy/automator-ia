@@ -14,6 +14,31 @@ class DashboardAPI {
         return response.json();
     }
 
+    async fetchOAuthStatus() {
+        const response = await fetch('/api/oauth/status');
+        return response.json();
+    }
+
+    async fetchAllProfilesWithStatus() {
+        const response = await fetch(`${this.baseURL}/profiles/all`);
+        return response.json();
+    }
+
+    async checkToolProfileOAuthStatus(toolName, profileName) {
+        const response = await fetch(`${this.baseURL}/oauth/status/${toolName}/${profileName}`);
+        return response.json();
+    }
+
+    async fetchGoogleProfiles() {
+        const response = await fetch(`${this.baseURL}/google/profiles`);
+        return response.json();
+    }
+
+    async checkGoogleOAuthStatus(profile = 'DEFAULT') {
+        const response = await fetch(`${this.baseURL}/oauth/google/status?profile=${profile}`);
+        return response.json();
+    }
+
     async toggleWorkflow(workflowName) {
         const response = await fetch(`${this.baseURL}/workflows/${workflowName}/toggle`, {
             method: 'POST',
@@ -70,6 +95,20 @@ class DashboardAPI {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({})
+        });
+        return response.json();
+    }
+
+    async getWorkflowInputs(workflowName) {
+        const response = await fetch(`${this.baseURL}/workflows/${workflowName}/inputs`);
+        return response.json();
+    }
+
+    async executeWorkflowStream(workflowName, inputs) {
+        const response = await fetch(`${this.baseURL}/workflows/${workflowName}/execute-stream`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(inputs)
         });
         return response.json();
     }
@@ -446,12 +485,17 @@ class Dashboard {
 
     async loadDashboard() {
         try {
-            const [data, envData] = await Promise.all([
+            const [data, envData, allProfiles] = await Promise.all([
                 this.api.fetchStats(),
-                this.api.fetchEnv().catch(() => ({ variables: {}, count: 0 }))
+                this.api.fetchEnv().catch(() => ({ variables: {}, count: 0 })),
+                this.api.fetchAllProfilesWithStatus().catch(() => ({ profiles_by_tool: {}, oauth_tools: [] }))
             ]);
             
             window.ENV_VARS = envData.variables || {};
+            window.ALL_PROFILES = allProfiles.profiles_by_tool || {};
+            window.OAUTH_TOOLS = allProfiles.oauth_tools || [];
+            
+            console.log('Loaded profiles:', window.ALL_PROFILES);
             
             this.updateStats(data.stats, data.workflows.length, data.interfaces.length);
             this.renderTools(data.tools);
@@ -476,30 +520,67 @@ class Dashboard {
             return;
         }
         
-        container.innerHTML = tools.map(tool => `
-            <aside class="tool-card ${tool.active ? '' : 'inactive'}">
-                <div class="tool-header">
-                    <img src="/dashboard/api/tools/${tool.name}/logo" alt="${tool.display_name}" class="tool-logo" onerror="this.style.display='none'">
-                    <div class="tool-info">
-                        <h3>${tool.display_name}</h3>
-                        <p>${tool.profiles.length} profil(s) configuré(s)</p>
+        container.innerHTML = tools.map(tool => {
+            const toolProfiles = window.ALL_PROFILES[tool.name] || [];
+            const hasOAuth = window.OAUTH_TOOLS.includes(tool.name);
+            const defaultProfile = toolProfiles.length > 0 ? toolProfiles[0] : null; // Premier profil disponible
+            
+            let connectionSection = '';
+            if (hasOAuth && defaultProfile) {
+                const needsCheck = defaultProfile.oauth_status?.check_required || false;
+                
+                connectionSection = `
+                    <div class="oauth-status checking" id="oauth-status-${tool.name}">
+                        <span class="connection-indicator" id="indicator-${tool.name}">⏳</span>
+                        <span id="status-text-${tool.name}">Vérification...</span>
+                        <div class="connection-dropdown">
+                            <select id="profile-${tool.name}" class="profile-selector" onchange="dashboard.checkProfileStatus('${tool.name}', this.value)">
+                                ${toolProfiles.map(profile => 
+                                    `<option value="${profile.name}">${profile.name}</option>`
+                                ).join('')}
+                            </select>
+                            <button id="connect-btn-${tool.name}" onclick="dashboard.connectOAuth('${tool.name}', document.getElementById('profile-${tool.name}').value)" 
+                                    class="btn-connect" style="display: none">
+                                Se connecter
+                            </button>
+                        </div>
                     </div>
-                    <div class="tool-toggle">
-                        <label class="switch">
-                            <input type="checkbox" ${tool.active ? 'checked' : ''} 
-                                   onchange="dashboard.toggleTool('${tool.name}', this.checked)">
-                            <span class="slider"></span>
-                        </label>
+                `;
+                
+                // Vérifier le statut après le rendu
+                if (needsCheck) {
+                    setTimeout(() => {
+                        dashboard.checkProfileStatus(tool.name, defaultProfile.name);
+                    }, 100);
+                }
+            }
+            
+            return `
+                <aside class="tool-card ${tool.active ? '' : 'inactive'} ${hasOAuth ? (defaultProfile?.oauth_status?.authenticated ? 'oauth-connected' : 'oauth-disconnected') : ''}">
+                    <div class="tool-header">
+                        <img src="/dashboard/api/tools/${tool.name}/logo" alt="${tool.display_name}" class="tool-logo" onerror="this.style.display='none'">
+                        <div class="tool-info">
+                            <h3>${tool.display_name}</h3>
+                            <p>${toolProfiles.length} profil(s) configuré(s)</p>
+                        </div>
+                        <div class="tool-toggle">
+                            <label class="switch">
+                                <input type="checkbox" ${tool.active ? 'checked' : ''} 
+                                       onchange="dashboard.toggleTool('${tool.name}', this.checked)">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
                     </div>
-                </div>
-                <div class="tool-status">
-                    <span class="status ${tool.active ? 'active' : 'inactive'}">${tool.active ? 'Actif' : 'Inactif'}</span>
-                </div>
-                <div class="tool-actions">
-                    <button onclick="profileModal.open('${tool.name}', ${JSON.stringify(tool).replace(/"/g, '&quot;')})" class="btn-primary">Gérer les Profils</button>
-                </div>
-            </aside>
-        `).join('');
+                    ${connectionSection}
+                    <div class="tool-status">
+                        <span class="status ${tool.active ? 'active' : 'inactive'}">${tool.active ? 'Actif' : 'Inactif'}</span>
+                    </div>
+                    <div class="tool-actions">
+                        <button onclick="profileModal.open('${tool.name}', ${JSON.stringify(tool).replace(/"/g, '&quot;')})" class="btn-primary">Gérer les Profils</button>
+                    </div>
+                </aside>
+            `;
+        }).join('');
     }
 
     renderWorkflows(workflows) {
@@ -583,7 +664,7 @@ class Dashboard {
         container.innerHTML = html;
     }
 
-    async toggleTool(toolName, isChecked) {
+    async toggleTool(toolName) {
         try {
             const result = await this.api.toggleTool(toolName);
             if (result.status === 'success') {
@@ -598,7 +679,7 @@ class Dashboard {
         }
     }
 
-    async toggleWorkflow(workflowName, isChecked) {
+    async toggleWorkflow(workflowName) {
         try {
             const result = await this.api.toggleWorkflow(workflowName);
             if (result.status === 'success') {
@@ -614,15 +695,7 @@ class Dashboard {
     }
 
     async runWorkflow(workflowName) {
-        if(!confirm('Exécuter le workflow ' + workflowName + ' ?')) return;
-        
-        try {
-            const result = await this.api.executeWorkflow(workflowName);
-            alert('Résultat: ' + result.status + ' - ' + result.message);
-            this.loadDashboard();
-        } catch (error) {
-            alert('Erreur: ' + error);
-        }
+        await executeWorkflowEnhanced(workflowName);
     }
 
     async showLogs(workflowName) {
@@ -656,12 +729,469 @@ class Dashboard {
                 </body>
                 </html>
             `;
-            logsWindow.document.write(logsHtml);
+            logsWindow.document.body.innerHTML = logsHtml;
             logsWindow.document.close();
             
         } catch (error) {
             alert('Erreur lors du chargement des logs: ' + error);
         }
+    }
+
+    async checkProfileStatus(toolName, profileName) {
+        try {
+            console.log(`Checking status for ${toolName} profile ${profileName}`);
+            
+            const status = await this.api.checkToolProfileOAuthStatus(toolName, profileName);
+            
+            // Mettre à jour l'interface utilisateur
+            const indicator = document.getElementById(`indicator-${toolName}`);
+            const statusText = document.getElementById(`status-text-${toolName}`);
+            const connectBtn = document.getElementById(`connect-btn-${toolName}`);
+            const oauthStatus = document.getElementById(`oauth-status-${toolName}`);
+            
+            if (indicator && statusText && connectBtn && oauthStatus) {
+                const isAuthenticated = status.authenticated || false;
+                
+                indicator.textContent = isAuthenticated ? '🟢' : '🔴';
+                statusText.textContent = isAuthenticated ? `Connecté (${profileName})` : 'Non connecté';
+                connectBtn.style.display = isAuthenticated ? 'none' : 'inline-block';
+                oauthStatus.className = `oauth-status ${isAuthenticated ? 'connected' : 'disconnected'}`;
+                
+                console.log(`Updated UI for ${toolName}:`, { isAuthenticated, profileName });
+            }
+            
+        } catch (error) {
+            console.error(`Failed to check profile status for ${toolName}:`, error);
+        }
+    }
+
+    async connectOAuth(toolName, profile) {
+        try {
+            // Vérifier si c'est un outil Google
+            if (toolName.startsWith('google_')) {
+                const service = toolName.replace('google_', '');
+                const authUrl = `/oauth/google/auth?service=${service}&profile=${profile}`;
+                
+                // Ouvre une nouvelle fenêtre pour l'authentification OAuth Google
+                const authWindow = window.open(authUrl, 'oauth-auth', 'width=600,height=700');
+                
+                // Surveillance de la fermeture de la fenêtre d'auth
+                const checkClosed = setInterval(() => {
+                    if (authWindow.closed) {
+                        clearInterval(checkClosed);
+                        // Vérifier le statut après authentification
+                        setTimeout(() => {
+                            this.checkProfileStatus(toolName, profile);
+                        }, 1000);
+                    }
+                }, 1000);
+                
+            } else {
+                // Gestion des autres outils OAuth non-Google
+                const authUrl = `/oauth/${toolName}/auth?profile=${profile}`;
+                const authWindow = window.open(authUrl, 'oauth-auth', 'width=600,height=700');
+                
+                // Surveillance de la fermeture de la fenêtre d'auth
+                const checkClosed = setInterval(() => {
+                    if (authWindow.closed) {
+                        clearInterval(checkClosed);
+                        // Vérifier le statut après authentification
+                        setTimeout(() => {
+                            this.checkProfileStatus(toolName, profile);
+                        }, 1000);
+                    }
+                }, 1000);
+            }
+            
+        } catch (error) {
+            console.error('OAuth connection error:', error);
+            alert('Erreur lors de la connexion OAuth: ' + error.message);
+        }
+    }
+}
+
+// Workflow Inputs Modal
+function showWorkflowInputsModal(workflow, inputs) {
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.innerHTML = `
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Configuration ${workflow.name}</h5>
+                    <button type="button" class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="workflow-inputs-form">
+                        ${generateInputsForm(inputs)}
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="this.closest('.modal').remove()">Annuler</button>
+                    <button type="button" class="btn-primary" onclick="executeWorkflowWithInputs('${workflow.name}')">Exécuter</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    modal.style.display = 'flex';
+}
+
+function generateInputsForm(inputs) {
+    return inputs.map(input => {
+        const required = input.required ? 'required' : '';
+        
+        switch (input.type) {
+            case 'password':
+                return `
+                    <div class="form-group">
+                        <label for="${input.name}">${input.label} ${input.required ? '*' : ''}</label>
+                        <input type="password" class="form-control" id="${input.name}" name="${input.name}" ${required} placeholder="${input.description || ''}">
+                        ${input.description ? `<small class="form-text">${input.description}</small>` : ''}
+                    </div>
+                `;
+                
+            case 'datetime':
+                return `
+                    <div class="form-group">
+                        <label for="${input.name}">${input.label} ${input.required ? '*' : ''}</label>
+                        <input type="datetime-local" class="form-control" id="${input.name}" name="${input.name}" ${required}>
+                        ${input.description ? `<small class="form-text">${input.description}</small>` : ''}
+                    </div>
+                `;
+                
+            case 'number':
+                const minAttr = input.min !== undefined ? `min="${input.min}"` : '';
+                const maxAttr = input.max !== undefined ? `max="${input.max}"` : '';
+                const defaultVal = input.default !== undefined ? `value="${input.default}"` : '';
+                return `
+                    <div class="form-group">
+                        <label for="${input.name}">${input.label} ${input.required ? '*' : ''}</label>
+                        <input type="number" class="form-control" id="${input.name}" name="${input.name}" ${required} ${minAttr} ${maxAttr} ${defaultVal}>
+                        ${input.description ? `<small class="form-text">${input.description}</small>` : ''}
+                    </div>
+                `;
+                
+            case 'checkbox':
+                const checked = input.default ? 'checked' : '';
+                return `
+                    <div class="form-group form-check">
+                        <input type="checkbox" class="form-check-input" id="${input.name}" name="${input.name}" ${checked}>
+                        <label class="form-check-label" for="${input.name}">${input.label}</label>
+                        ${input.description ? `<small class="form-text">${input.description}</small>` : ''}
+                    </div>
+                `;
+                
+            case 'select':
+                const options = input.options.map(opt => 
+                    `<option value="${opt.value}">${opt.label}</option>`
+                ).join('');
+                const emptyOption = !input.required ? '<option value="">-- Sélectionner --</option>' : '';
+                return `
+                    <div class="form-group">
+                        <label for="${input.name}">${input.label} ${input.required ? '*' : ''}</label>
+                        <select class="form-control" id="${input.name}" name="${input.name}" ${required}>
+                            ${emptyOption}
+                            ${options}
+                        </select>
+                        ${input.description ? `<small class="form-text">${input.description}</small>` : ''}
+                    </div>
+                `;
+                
+            case 'multiselect':
+                const checkboxes = input.options.map(opt => 
+                    `<div class="form-check">
+                        <input type="checkbox" class="form-check-input" value="${opt.value}" name="${input.name}[]">
+                        <label class="form-check-label">${opt.label}</label>
+                    </div>`
+                ).join('');
+                const limits = input.min || input.max ? `(min: ${input.min || 0}, max: ${input.max || 'illimité'})` : '';
+                return `
+                    <div class="form-group">
+                        <label>${input.label} ${input.required ? '*' : ''} ${limits}</label>
+                        <div class="multiselect-container" data-name="${input.name}" data-min="${input.min || 0}" data-max="${input.max || 999}">
+                            ${checkboxes}
+                        </div>
+                        ${input.description ? `<small class="form-text">${input.description}</small>` : ''}
+                    </div>
+                `;
+                
+            default: // text
+                return `
+                    <div class="form-group">
+                        <label for="${input.name}">${input.label} ${input.required ? '*' : ''}</label>
+                        <input type="text" class="form-control" id="${input.name}" name="${input.name}" ${required} placeholder="${input.description || ''}">
+                        ${input.description ? `<small class="form-text">${input.description}</small>` : ''}
+                    </div>
+                `;
+        }
+    }).join('');
+}
+
+async function executeWorkflowWithInputs(workflowName) {
+    const form = document.getElementById('workflow-inputs-form');
+    const formData = new FormData(form);
+    const inputs = {};
+    
+    // Traitement spécial pour les différents types d'inputs
+    for (const [key, value] of formData.entries()) {
+        if (key.endsWith('[]')) {
+            // Multiselect: grouper les valeurs
+            const baseName = key.slice(0, -2);
+            if (!inputs[baseName]) inputs[baseName] = [];
+            inputs[baseName].push(value);
+        } else {
+            inputs[key] = value;
+        }
+    }
+    
+    // Traitement des checkboxes non cochées (non présentes dans FormData)
+    const checkboxInputs = form.querySelectorAll('input[type="checkbox"]:not([name*="[]"])');
+    checkboxInputs.forEach(checkbox => {
+        if (!(checkbox.name in inputs)) {
+            inputs[checkbox.name] = false;
+        } else {
+            inputs[checkbox.name] = true;
+        }
+    });
+    
+    // Conversion des datetime-local en format ISO
+    Object.keys(inputs).forEach(key => {
+        const input = form.querySelector(`[name="${key}"]`);
+        if (input && input.type === 'datetime-local' && inputs[key]) {
+            inputs[key] = inputs[key].includes(':') && inputs[key].length === 16 
+                ? inputs[key] + ':00' 
+                : inputs[key];
+        }
+        
+        // Conversion des nombres
+        if (input && input.type === 'number' && inputs[key]) {
+            inputs[key] = parseFloat(inputs[key]);
+        }
+    });
+    
+    try {
+        const response = await api.executeWorkflowStream(workflowName, inputs);
+        
+        document.querySelector('.modal').remove();
+        
+        if (response.execution_id) {
+            showWorkflowLogsModal(workflowName, response.execution_id);
+        } else {
+            showWorkflowResultModal(workflowName, response);
+        }
+        
+    } catch (error) {
+        console.error('Erreur exécution:', error);
+        document.querySelector('.modal').remove();
+        showWorkflowResultModal(workflowName, {
+            status: 'error',
+            message: 'Erreur lors de l\'exécution du workflow: ' + error.message
+        });
+    }
+}
+
+function showWorkflowResultModal(workflowName, result) {
+    // Vérifier si une authentification OAuth est requise
+    if (result.auth_required) {
+        const authModal = document.createElement('div');
+        authModal.className = 'modal fade';
+        authModal.innerHTML = `
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">⚠️ Authentification requise - ${workflowName}</h5>
+                        <button type="button" class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="result-status error">
+                            <strong>Authentification Google Calendar requise</strong>
+                        </div>
+                        <div class="result-message">
+                            <p>Le profil <strong>'${result.profile || 'test'}'</strong> n'est pas connecté à Google Calendar.</p>
+                            <p>Cliquez sur "Se connecter" pour ouvrir la fenêtre d'authentification Google.</p>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn-secondary" onclick="this.closest('.modal').remove()">Annuler</button>
+                        <button type="button" class="btn-primary" onclick="openOAuthWindow('${result.auth_url}', '${result.profile}', '${workflowName}')">Se connecter</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(authModal);
+        authModal.style.display = 'flex';
+        return;
+    }
+    
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.innerHTML = `
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Résultat - ${workflowName}</h5>
+                    <button type="button" class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="result-status ${result.status || 'unknown'}">
+                        <strong>Statut:</strong> ${result.status || 'unknown'}
+                    </div>
+                    ${result.message ? `<div class="result-message"><strong>Message:</strong> ${result.message}</div>` : ''}
+                    ${result.error ? `<div class="result-message"><strong>Erreur:</strong> ${result.error}</div>` : ''}
+                    ${result.data ? `<div class="result-data">
+                        <strong>Données:</strong>
+                        <pre>${JSON.stringify(result.data, null, 2)}</pre>
+                    </div>` : ''}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-primary" onclick="this.closest('.modal').remove()">Fermer</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    modal.style.display = 'flex';
+}
+
+function openOAuthWindow(authUrl, profile, workflowName) {
+    // Fermer la modale d'authentification
+    document.querySelector('.modal').remove();
+    
+    // Ouvrir la fenêtre OAuth
+    const authWindow = window.open(authUrl, 'oauth-auth', 'width=600,height=700');
+    
+    // Surveiller la fermeture de la fenêtre
+    const checkClosed = setInterval(() => {
+        if (authWindow.closed) {
+            clearInterval(checkClosed);
+            
+            // Afficher message de reconnexion et proposition de retry
+            const retryModal = document.createElement('div');
+            retryModal.className = 'modal fade';
+            retryModal.innerHTML = `
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">✅ Authentification terminée</h5>
+                            <button type="button" class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="result-message">
+                                <p>L'authentification Google est terminée.</p>
+                                <p>Voulez-vous relancer le workflow <strong>${workflowName}</strong> ?</p>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn-secondary" onclick="this.closest('.modal').remove()">Plus tard</button>
+                            <button type="button" class="btn-primary" onclick="retryWorkflow('${workflowName}')">Relancer le workflow</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(retryModal);
+            retryModal.style.display = 'flex';
+        }
+    }, 1000);
+}
+
+function retryWorkflow(workflowName) {
+    document.querySelector('.modal').remove();
+    dashboard.runWorkflow(workflowName);
+}
+
+function showWorkflowLogsModal(workflowName, executionId) {
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Logs ${workflowName}</h5>
+                    <button type="button" class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div id="logs-container" style="height: 400px; overflow-y: auto; background: #1e1e1e; color: #fff; padding: 10px; font-family: monospace;">
+                        <div style="color: #17a2b8;">Connexion aux logs...</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="this.closest('.modal').remove()">Fermer</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    modal.style.display = 'flex';
+    
+    connectWorkflowLogs(workflowName, executionId);
+}
+
+function connectWorkflowLogs(workflowName, executionId) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/dashboard/ws/workflows/${workflowName}/logs/${executionId}`;
+    
+    const websocket = new WebSocket(wsUrl);
+    const container = document.getElementById('logs-container');
+    
+    websocket.onopen = function() {
+        container.innerHTML = '<div style="color: #28a745;">✓ Connecté aux logs</div>';
+    };
+    
+    websocket.onmessage = function(event) {
+        const logEntry = JSON.parse(event.data);
+        appendLogEntry(container, logEntry);
+    };
+    
+    websocket.onerror = function(error) {
+        container.innerHTML += '<div style="color: #dc3545;">✗ Erreur connexion logs</div>';
+    };
+    
+    websocket.onclose = function() {
+        container.innerHTML += '<div style="color: #ffc107;">➤ Connexion fermée</div>';
+    };
+}
+
+function appendLogEntry(container, logEntry) {
+    const timestamp = new Date(logEntry.timestamp * 1000).toLocaleTimeString();
+    const levelColors = {
+        'INFO': '#17a2b8',
+        'SUCCESS': '#28a745', 
+        'WARNING': '#ffc107',
+        'ERROR': '#dc3545'
+    };
+    const color = levelColors[logEntry.level] || '#ffffff';
+    
+    const logLine = document.createElement('div');
+    logLine.style.color = color;
+    logLine.innerHTML = `[${timestamp}] ${logEntry.level}: ${logEntry.message}`;
+    
+    container.appendChild(logLine);
+    container.scrollTop = container.scrollHeight;
+}
+
+// Enhanced workflow execution
+async function executeWorkflowEnhanced(workflowName) {
+    try {
+        const inputsResponse = await api.getWorkflowInputs(workflowName);
+        
+        if (inputsResponse.inputs && inputsResponse.inputs.length > 0) {
+            showWorkflowInputsModal({name: workflowName}, inputsResponse.inputs);
+        } else {
+            const result = await api.executeWorkflow(workflowName);
+            showWorkflowResultModal(workflowName, result);
+        }
+    } catch (error) {
+        console.error('Erreur exécution workflow:', error);
+        showWorkflowResultModal(workflowName, {
+            status: 'error',
+            message: 'Erreur lors de l\'exécution du workflow: ' + error.message
+        });
     }
 }
 

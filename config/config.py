@@ -11,7 +11,10 @@ class Settings(BaseSettings):
     version: str = Field("dev", env="VERSION")
     database_url: str = Field("sqlite:///./database.db", env="DATABASE_URL")
     prod_base_url: str = Field("https://automator-ia.onrender.com", env="PROD_BASE_URL")
-    dev_base_url: str = f"http://{host}:{port}"
+    
+    @property
+    def dev_base_url(self) -> str:
+        return f"http://{self.host}:{self.port}"
     
     class Config:
         env_file = "config/.env"

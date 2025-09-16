@@ -1,9 +1,14 @@
 from typing import Dict, Any, List
 from datetime import datetime
 import asyncio
+import time
+from collections import defaultdict
 from app.private.workflows.registry import workflow_registry
 from app.common.database.crud import get_workflow_executions, get_logs
 from app.common.database.models import LogModel
+
+logs_buffer = defaultdict(list)
+websocket_connections = defaultdict(list)
 
 class WorkflowEngine:
     def __init__(self):
@@ -85,6 +90,57 @@ class WorkflowEngine:
         """Recharge tous les workflows (hot-reload)"""
         workflow_registry.reload_workflows()
         return {"status": "success", "message": "Workflows reloaded successfully"}
+
+async def execute_workflow_with_logs(workflow_name: str, data: Dict[str, Any], execution_id: str):
+    """Exécute workflow avec logging en temps réel"""
+    
+    def log_callback(level: str, message: str, context: Dict[str, Any] = None):
+        """Callback pour logs streaming"""
+        log_entry = {
+            "timestamp": time.time(),
+            "level": level,
+            "message": message,
+            "context": context or {},
+            "execution_id": execution_id
+        }
+        
+        logs_buffer[execution_id].append(log_entry)
+        
+        for websocket in websocket_connections[execution_id]:
+            asyncio.create_task(websocket.send_json(log_entry))
+    
+    try:
+        log_callback("INFO", f"Démarrage workflow {workflow_name}")
+        
+        result = workflow_registry.execute_workflow(workflow_name, data)
+        
+        log_callback("INFO", f"Workflow terminé avec succès", {"result": result})
+        return result
+        
+    except Exception as e:
+        log_callback("ERROR", f"Erreur workflow: {str(e)}")
+        raise
+    finally:
+        asyncio.create_task(cleanup_logs(execution_id, delay=3600))
+
+async def get_workflow_logs_stream(execution_id: str):
+    """Stream des logs pour un execution_id"""
+    for log_entry in logs_buffer[execution_id]:
+        yield log_entry
+    
+    while execution_id in logs_buffer:
+        await asyncio.sleep(0.1)
+        new_logs = logs_buffer[execution_id]
+        for log_entry in new_logs:
+            yield log_entry
+
+async def cleanup_logs(execution_id: str, delay: int = 3600):
+    """Nettoyage des logs après délai"""
+    await asyncio.sleep(delay)
+    if execution_id in logs_buffer:
+        del logs_buffer[execution_id]
+    if execution_id in websocket_connections:
+        del websocket_connections[execution_id]
 
 # Instance globale du moteur
 workflow_engine = WorkflowEngine()

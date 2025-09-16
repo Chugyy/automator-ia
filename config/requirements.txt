@@ -34,15 +34,18 @@ tzlocal==5.3.1
 uritemplate==4.2.0
 urllib3==2.5.0
 uvicorn==0.35.0
+websockets
 
 
 # Auto-generated requirements - DO NOT EDIT
 # Run 'python build.py' to regenerate
-# Consolidated from 5 tools: calendar, notion, slack, whatsapp, youtube
+# Consolidated from 9 tools: anthropic_claude, google_calendar, google_drive, google_sheets, notion, openai_chatgpt, slack, unipile_whatsapp, youtube_transcript
+anthropic>=0.34.0
 google-api-python-client>=2.88.0
+google-auth>=2.0.0
 google-auth-httplib2>=0.1.0
 google-auth-oauthlib>=0.8.0
-notion-client>=2.0.0
+openai>=1.0.0
 requests>=2.31.0
 slack-sdk>=3.19.0
 youtube-transcript-api>=0.6.0

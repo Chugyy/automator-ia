@@ -39,6 +39,20 @@ venv
 !.env.example
 !.env.DEFAULT
 
+!sample/*
+!sample.py
+!tools/date/*
+tools/
+workflows/
+
+!oauth.py
+!base.py
+!registry.py
+
+temp/
+.oauth*
+tests/*
+
 # Build system generated files
 config/built/.env.built
 

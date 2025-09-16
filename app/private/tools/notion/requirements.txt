@@ -1,3 +1,2 @@
-# Notion tool dependencies
-notion-client>=2.0.0
+# Notion tool dependencies - API 2025-09-03
 requests>=2.25.1

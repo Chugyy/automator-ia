@@ -105,9 +105,11 @@ class BaseOAuthTool(BaseTool):
                 f"Tried under base_dir, repo root and backend dirs."
             )
         
+        # Use combined scopes for initial auth to handle additive permissions
+        combined_scopes = self._get_combined_scopes_for_profile()
         flow = Flow.from_client_secrets_file(
             credentials_path,
-            scopes=self.scopes,
+            scopes=combined_scopes or self.scopes,
             redirect_uri=self.redirect_uri
         )
         
@@ -153,9 +155,26 @@ class BaseOAuthTool(BaseTool):
             if not credentials_path or not os.path.exists(credentials_path):
                 raise FileNotFoundError(f"Credentials file not found: {credentials_path}")
             
+            # Use the SAME scopes that were used for initial auth 
+            # Extract the actual scopes from the authorization response URL
+            from urllib.parse import urlparse, parse_qs
+            parsed_url = urlparse(authorization_response)
+            query_params = parse_qs(parsed_url.query)
+            response_scopes = query_params.get('scope', [])
+            
+            if response_scopes:
+                # Use scopes from the actual OAuth response
+                actual_scopes = response_scopes[0].split(' ') if response_scopes[0] else []
+                logger.info(f"Using scopes from OAuth response: {actual_scopes}")
+                callback_scopes = actual_scopes
+            else:
+                # Fallback to service-specific scopes
+                callback_scopes = self.GOOGLE_SCOPES.get(self.service, [])
+                logger.info(f"Using fallback service scopes: {callback_scopes}")
+            
             flow = Flow.from_client_secrets_file(
                 credentials_path,
-                scopes=self.scopes,
+                scopes=callback_scopes,
                 redirect_uri=self.redirect_uri,
                 state=state
             )
@@ -346,3 +365,223 @@ class BaseOAuthTool(BaseTool):
         except Exception as e:
             logger.error(f"OAuth authentication check failed: {e}")
             return False
+
+
+class GoogleOAuthTool(BaseOAuthTool):
+    """Unified Google OAuth handler for all google_* services"""
+    
+    GOOGLE_SCOPES = {
+        'calendar': [
+            'https://www.googleapis.com/auth/calendar',
+            'https://www.googleapis.com/auth/calendar.readonly'
+        ],
+        'drive': [
+            'https://www.googleapis.com/auth/drive',
+            'https://www.googleapis.com/auth/drive.file',
+            'https://www.googleapis.com/auth/drive.readonly'
+        ],
+        'youtube': [
+            'https://www.googleapis.com/auth/youtube.readonly',
+            'https://www.googleapis.com/auth/youtube'
+        ],
+        'sheets': [
+            'https://www.googleapis.com/auth/spreadsheets',
+            'https://www.googleapis.com/auth/spreadsheets.readonly'
+        ],
+        'gmail': [
+            'https://www.googleapis.com/auth/gmail.readonly',
+            'https://www.googleapis.com/auth/gmail.modify'
+        ]
+    }
+    
+    def __init__(self, service: str, profile: str = "DEFAULT", config: Dict[str, Any] = None):
+        self.service = service  
+        super().__init__(profile, config)
+        self.base_dir = os.getcwd()
+        self._load_profile_env()
+        self._setup_google_config()
+        self.authenticated = self.authenticate()
+    
+    def _load_profile_env(self):
+        """Load environment variables from .env.{PROFILE} file"""
+        env_path = os.path.join(os.path.dirname(__file__), f'{self.service}', f'.env.{self.profile}')
+        if os.path.exists(env_path):
+            with open(env_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        os.environ[key.strip()] = value.strip()
+    
+    def _setup_google_config(self):
+        """Setup unified Google configuration"""
+        if not self.config:
+            self.config = {}
+        
+        # Use credentials and token files from environment or defaults
+        self.config.update({
+            'credentials_file': os.environ.get('CREDENTIALS_FILE', f'etc/secrets/google_{self.profile.lower()}_credentials.json'),
+            'token_file': os.environ.get('TOKEN_FILE', f'etc/secrets/google_{self.profile.lower()}_token.json'),
+            'service': self.service
+        })
+        
+        # Set scopes for this service
+        service_scopes = self.GOOGLE_SCOPES.get(self.service, [])
+        
+        # Check if we need combined scopes (if other Google services are used)
+        combined_scopes = self._get_combined_scopes_for_profile()
+        if combined_scopes:
+            self.scopes = combined_scopes
+        else:
+            self.scopes = service_scopes
+    
+    def _get_combined_scopes_for_profile(self) -> List[str]:
+        """Get combined scopes for all Google services used by this profile"""
+        try:
+            # Always start with current service
+            services_used = {self.service}
+            
+            # Check for existing Google token to see what services are already authorized
+            token_path = self._resolve_path(self.config.get('token_file'))
+            if token_path and os.path.exists(token_path):
+                try:
+                    with open(token_path, 'r') as f:
+                        token_data = json.load(f)
+                    
+                    # Extract scopes from existing token to infer services
+                    existing_scopes = token_data.get('scopes', [])
+                    for scope in existing_scopes:
+                        for service_name, service_scopes in self.GOOGLE_SCOPES.items():
+                            if scope in service_scopes:
+                                services_used.add(service_name)
+                
+                except Exception as e:
+                    logger.debug(f"Could not read existing token scopes: {e}")
+            
+            # Combine scopes for all used services
+            all_scopes = []
+            for service in services_used:
+                all_scopes.extend(self.GOOGLE_SCOPES.get(service, []))
+            
+            combined = list(set(all_scopes))  # Remove duplicates
+            logger.info(f"Combined scopes for services {services_used}: {len(combined)} scopes")
+            return combined
+            
+        except Exception as e:
+            logger.warning(f"Could not determine combined scopes: {e}")
+            return self.GOOGLE_SCOPES.get(self.service, [])
+    
+    def _get_redirect_uri(self) -> str:
+        """Use unified Google callback"""
+        if settings.version == 'dev':
+            base_url = settings.dev_base_url
+        else:
+            base_url = settings.prod_base_url
+        return f"{base_url}/oauth/google/callback"
+    
+    def get_oauth_status(self) -> Dict[str, Any]:
+        """Get OAuth authentication status with unified Google URL"""
+        try:
+            self._get_credentials()
+            return {
+                "authenticated": True,
+                "provider": self.provider,
+                "scopes": self.scopes,
+                "tool": self.tool_name,
+                "auth_url": f"/oauth/google/auth?service={self.service}&profile={self.profile}"
+            }
+        except PermissionError:
+            return {
+                "authenticated": False,
+                "provider": self.provider,
+                "scopes": self.scopes,
+                "tool": self.tool_name,
+                "auth_url": f"/oauth/google/auth?service={self.service}&profile={self.profile}"
+            }
+        except Exception as e:
+            return {
+                "authenticated": False,
+                "provider": self.provider,
+                "error": str(e),
+                "tool": self.tool_name,
+                "auth_url": f"/oauth/google/auth?service={self.service}&profile={self.profile}"
+            }
+
+    def _store_oauth_state(self, state: str) -> None:
+        """Store OAuth state with service information"""
+        state_data = {
+            'state': state,
+            'service': self.service,
+            'profile': self.profile,
+            'timestamp': time.time()
+        }
+        
+        state_file = os.path.join(self.base_dir, ".oauth_state_google")
+        try:
+            existing_data = {}
+            if os.path.exists(state_file):
+                try:
+                    with open(state_file, 'r') as f:
+                        existing_data = json.load(f) or {}
+                except Exception:
+                    existing_data = {}
+            
+            entries = existing_data.get('entries', [])
+            entries.append(state_data)
+            existing_data['entries'] = entries[-20:]  # Keep last 20 entries
+            
+            with open(state_file, 'w') as f:
+                json.dump(existing_data, f)
+        except Exception as e:
+            logger.warning(f"Could not store Google OAuth state: {e}")
+    
+    def _validate_oauth_state(self, state: str) -> bool:
+        """Validate OAuth state for Google services"""
+        if not state:
+            return False
+        
+        state_file = os.path.join(self.base_dir, ".oauth_state_google")
+        
+        try:
+            if not os.path.exists(state_file):
+                return False
+            
+            with open(state_file, 'r') as f:
+                stored_data = json.load(f)
+            
+            entries = stored_data.get('entries', [])
+            for entry in entries:
+                if (entry.get('state') == state and 
+                    time.time() - entry.get('timestamp', 0) < 600):  # 10 min expiry
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Could not validate Google OAuth state: {e}")
+            return False
+    
+    def get_service_credentials(self) -> Credentials:
+        """Get credentials for this specific service"""
+        return self._get_credentials()
+    
+    def execute(self, action: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
+        """GoogleOAuthTool is an auth handler, not a service executor"""
+        return {"error": "GoogleOAuthTool is for authentication only. Use specific service tools for execution."}
+    
+    def get_available_actions(self) -> List[str]:
+        """GoogleOAuthTool handles authentication only"""
+        return ["authenticate", "get_status", "refresh_token"]
+    
+    @classmethod
+    def get_available_services(cls) -> List[str]:
+        """Get list of available Google services"""
+        return list(cls.GOOGLE_SCOPES.keys())
+    
+    @classmethod  
+    def create_for_service(cls, service: str, profile: str = "DEFAULT", config: Dict[str, Any] = None):
+        """Factory method to create GoogleOAuthTool for specific service"""
+        if service not in cls.GOOGLE_SCOPES:
+            raise ValueError(f"Unsupported Google service: {service}. Available: {list(cls.GOOGLE_SCOPES.keys())}")
+        
+        return cls(service=service, profile=profile, config=config)

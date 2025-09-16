@@ -111,6 +111,13 @@ class WorkflowRegistry:
     def get_workflow(self, name: str) -> Dict[str, Any]:
         return self._workflows.get(name)
     
+    def get_workflow_module(self, name: str):
+        """Retourne le module d'un workflow"""
+        workflow_data = self._workflows.get(name)
+        if workflow_data:
+            return workflow_data['module']
+        raise Exception(f"Workflow '{name}' not found")
+    
     def get_tool_instances(self, workflow_name: str) -> Dict[str, Any]:
         """Retourne les instances d'outils avec les profils configurés"""
         db_workflow = next((w for w in list_workflows() if w.name == workflow_name), None)
@@ -240,9 +247,7 @@ class WorkflowRegistry:
         summary = []
         
         for db_workflow in db_workflows:
-            # Vérifier que le workflow est actif et que son dossier existe encore
-            if not db_workflow.active:
-                continue
+            # Vérifier que le dossier du workflow existe encore
             workflow_dir = self.workflows_dir / db_workflow.name
             if not workflow_dir.exists():
                 continue

@@ -90,15 +90,21 @@ def delete_workflow(workflow_id: str) -> bool:
 # TOOLS
 def create_tool(tool: ToolModel) -> str:
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO tools (id, name, display_name, logo_path, config_path, readme_path, active)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (tool.id, tool.name, tool.display_name, tool.logo_path,
-          tool.config_path, tool.readme_path, tool.active))
-    conn.commit()
-    conn.close()
-    return tool.id
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR IGNORE INTO tools (id, name, display_name, logo_path, config_path, readme_path, active)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (tool.id, tool.name, tool.display_name, tool.logo_path,
+              tool.config_path, tool.readme_path, tool.active))
+        conn.commit()
+        return tool.id
+    except sqlite3.Error as e:
+        conn.rollback()
+        print(f"⚠️ Erreur création outil {tool.name}: {e}")
+        return None
+    finally:
+        conn.close()
 
 def get_tool(tool_id: str) -> Optional[ToolModel]:
     conn = get_db_connection()
@@ -138,15 +144,20 @@ def list_tools(active_only: bool = False) -> List[ToolModel]:
 
 def update_tool(tool_id: str, updates: Dict[str, Any]) -> bool:
     conn = get_db_connection()
-    cursor = conn.cursor()
-    set_clause = ", ".join([f"{k} = ?" for k in updates.keys()])
-    values = list(updates.values())
-    values.append(tool_id)
-    cursor.execute(f"UPDATE tools SET {set_clause} WHERE id = ?", values)
-    conn.commit()
-    updated = cursor.rowcount > 0
-    conn.close()
-    return updated
+    try:
+        cursor = conn.cursor()
+        set_clause = ", ".join([f"{k} = ?" for k in updates.keys()])
+        values = list(updates.values())
+        values.append(tool_id)
+        cursor.execute(f"UPDATE tools SET {set_clause} WHERE id = ?", values)
+        conn.commit()
+        return cursor.rowcount > 0
+    except sqlite3.Error as e:
+        conn.rollback()
+        print(f"⚠️ Erreur mise à jour outil {tool_id}: {e}")
+        return False
+    finally:
+        conn.close()
 
 # TOOL PROFILES
 def create_tool_profile(profile: ToolProfileModel) -> str:

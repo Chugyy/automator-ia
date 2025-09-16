@@ -12,12 +12,12 @@ except Exception:
 
 try:
     # Tools injected by the engine/registry
-    from app.private.tools.calendar.main import CalendarTool
+    from app.private.tools.google_calendar.main import CalendarTool
     from app.private.tools.date.main import DateTool
     from config.config import settings
 except Exception:
     # Fallback for direct execution
-    from tools.calendar.main import CalendarTool
+    from tools.google_calendar.main import CalendarTool
     from tools.date.main import DateTool
     class settings:  # simple fallback
         host = 'localhost'
@@ -112,10 +112,11 @@ def execute(data: Dict[str, Any] = None, tools: Dict[str, Any] = None) -> Dict[s
     Workflow: crée un événement le lendemain à une heure aléatoire.
 
     Règles de conflit (même nom):
-    - Si le créneau ciblé est pris par le même nom, placer l'événement "à la suite".
+    - Si le créneau ciblé est pris par le même nom, placer l'événement à la suite.
     - Si ce nouveau créneau est encore pris par le même nom, garder le créneau initial
       et ajouter/remplacer un suffixe de 6 chiffres au nom.
     """
+
     params = data or {}
 
     # Inputs with sensible defaults
